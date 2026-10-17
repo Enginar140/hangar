@@ -1,0 +1,11 @@
+# Two vehicles with ArduPilot's built-in physics: no Gazebo needed.
+# Start it with:  hangar quickstart.yaml   (or `hangar up quickstart.yaml`)
+name: quickstart
+outputs:
+  - udp:127.0.0.1:14550      # QGroundControl / Mission Planner listen here
+vehicles:
+  - model: sitl:plane
+    name: plane
+  - model: sitl:copter
+    name: copter
+    pose: [30, 0, 0]          # 30 m east of the plane

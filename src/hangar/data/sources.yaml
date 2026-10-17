@@ -1,0 +1,43 @@
+# Third-party projects Hangar can download for you. Nothing from these
+# projects ships with Hangar: they are fetched on your machine, from their
+# own repositories, only after you have seen their license and said yes.
+# `ref` is a tag, branch or commit; pinning keeps every user on the same code.
+
+ardupilot:
+  title: ArduPilot (SITL autopilot)
+  url: https://github.com/ArduPilot/ardupilot
+  ref: Plane-4.7.2          # stable 4.7.2 tree; builds copter, plane and rover
+  license: GPL-3.0
+  submodules: true
+  required: true
+  purpose: Builds the arducopter / arduplane / ardurover SITL binaries and provides default parameters.
+  build:
+    prereqs: Tools/environment_install/install-prereqs-ubuntu.sh -y
+    commands:
+      # install-prereqs creates ~/venv-ardupilot; waf must run inside it
+      - . ~/venv-ardupilot/bin/activate 2>/dev/null || true; ./waf configure --board sitl
+      - . ~/venv-ardupilot/bin/activate 2>/dev/null || true; ./waf copter plane rover
+
+ardupilot_gazebo:
+  title: ArduPilot Gazebo plugin
+  url: https://github.com/ArduPilot/ardupilot_gazebo
+  ref: 082a0fe231f6e63bc8d1598f1cba461d9e2ea7f5
+  license: LGPL-3.0
+  required: false
+  purpose: Connects Gazebo vehicles to SITL and streams their cameras. Needed only for Gazebo vehicles.
+  build:
+    apt: [libgz-sim8-dev, rapidjson-dev, libopencv-dev, libgstreamer1.0-dev,
+          libgstreamer-plugins-base1.0-dev, gstreamer1.0-plugins-bad, gstreamer1.0-libav,
+          gstreamer1.0-gl, cmake, build-essential]
+    commands:
+      - GZ_VERSION=harmonic cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - GZ_VERSION=harmonic cmake --build build -j
+
+sitl_models:
+  title: ArduPilot SITL_Models (example vehicles and worlds)
+  url: https://github.com/ArduPilot/SITL_Models
+  ref: 25bc38ed8c6c0345840159a8cbc0b02781d52f3c
+  dir: SITL_Models
+  license: not specified by the repository (check each model before redistributing it)
+  required: false
+  purpose: Ready-made Gazebo planes, copters, rovers, boats and worlds.

@@ -1,0 +1,11 @@
+# A fixed-wing in Gazebo with its nose camera fed to /dev/video2 for OpenCV.
+# Needs: Gazebo Harmonic, ardupilot_gazebo (built) and SITL_Models.
+name: gazebo-plane
+world: skywalker_x8_runway
+outputs:
+  - udp:127.0.0.1:14550
+vehicles:
+  - model: skywalker_x8
+    pose: [0, 0, 0.3, 0, 0, 90]
+    camera:
+      v4l2_device: /dev/video2

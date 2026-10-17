@@ -1,0 +1,20 @@
+# Several vehicles, each with an extra per-vehicle output.
+# {i} is the vehicle index (0, 1, 2...), {sysid} its MAVLink system id.
+name: mixed-fleet
+speedup: 1
+outputs:
+  - udp:127.0.0.1:14550                 # all vehicles, one GCS
+  - udp:127.0.0.1:{15000+i}             # one port per vehicle (e.g. a competition server)
+vehicles:
+  - model: sitl:plane
+    name: alpha
+  - model: sitl:plane
+    name: bravo
+    pose: [0, 50, 0]
+  - model: sitl:copter
+    name: scout
+    pose: [40, 0, 0]
+    params:
+      SIM_WIND_SPD: 3
+    outputs:
+      - tcpin:0.0.0.0:{6000+i}          # e.g. a companion computer connects here
