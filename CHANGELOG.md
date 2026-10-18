@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.2 (2026-10-18)
 
 - **Vehicles without a pose are placed automatically**, 15 m apart and clear of placed ones,
   instead of all starting at the origin (where they fell over each other and never became
@@ -13,6 +13,7 @@
   colliding buildings.
 - Worlds from real places use hangar-earth 0.3.0: `hangar world create --no-building-collision`
   and a "buildings are solid" switch in the dialog make buildings visual only.
+- `hangar doctor` shows the GPU and warns when only an integrated one is found.
 
 ## 0.3.1 (2026-10-18)
 

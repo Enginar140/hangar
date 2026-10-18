@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from . import perf
 from .catalog import BINARIES, Catalog
 from .settings import Settings
 
@@ -105,6 +106,13 @@ def run_checks(settings: Settings) -> list[Check]:
     clip = next((c for c in ("wl-copy", "xclip", "xsel") if shutil.which(c)), None)
     add(Check("Clipboard", "ok" if clip else "warn", clip or "no clipboard tool (Copy buttons need one)",
               "sudo apt install wl-clipboard xclip"))
+
+    gpus = perf.gpu_vendors()
+    if gpus:
+        weak = perf.integrated_gpu_only()
+        add(Check("GPU", "warn" if weak else "ok", ", ".join(gpus) + (" (integrated only)" if weak else ""),
+                  "Gazebo renders slowly here: use 'headless: true' and 1280x720 @ 30 fps cameras"
+                  if weak else ""))
 
     if shutil.which("nvidia-smi"):
         code, out = _run(["nvidia-smi", "-L"])
