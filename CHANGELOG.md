@@ -1,17 +1,32 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-10-18)
 
-- **Shared map**: the Map button (`m`) opens MAVProxy's map and console with every vehicle
-  on one map, on a temporary port Hangar adds and removes by itself. `!command` in the
-  command line goes to MAVProxy for the selected vehicle. `hangar up --map`.
-- MAVProxy installs on demand into Hangar's own folder (wxPython wheel for Ubuntu, no VTK,
-  no sudo): from the Map button, `hangar sources fetch mavproxy` or `install.sh --mavproxy`.
-- `hangar doctor` reports MAVProxy.
-- **Cameras to other devices**: `camera.outputs` and `camera.stream`. `relay` (default) copies the
-  RTP stream untouched to this computer and every output, editable live in the Ports tab
-  (Camera outputs); `direct` makes the camera plugin send straight to one address. Multicast works.
-  The camera plugin now sends to 5700 + index in relay mode; readers keep using 5600 + index.
+### Shared map (MAVProxy)
+- The **Map** button (`m`) opens MAVProxy's map and console with every vehicle on one map,
+  on a temporary port Hangar adds and removes by itself; vehicle restarts keep it.
+- `!command` in the command line goes to MAVProxy for the selected vehicle, e.g. `!wp list`;
+  MAVProxy's answers appear in the Logs tab. Headless: `hangar up --map`.
+- MAVProxy installs on demand into Hangar's own folder: the Map button offers it, or
+  `hangar sources fetch mavproxy`, or `install.sh --mavproxy`. Uses the official wxPython
+  wheel for Ubuntu 22.04/24.04 and skips VTK (about 900 MB instead of 1.4 GB); no sudo.
+  `hangar doctor` reports it.
+
+### Cameras to other devices
+- `camera.outputs` sends a camera to other computers (host:port, `{i}` templates, multicast).
+- `camera.stream: relay` (default): Hangar copies the RTP stream untouched to this computer
+  and every output; outputs can be added and removed while running in the Ports tab
+  (**Camera outputs**). `camera.stream: direct`: the camera plugin sends straight to its one
+  address and this computer gets nothing.
+- In relay mode the camera plugin now sends to 5700 + index; readers keep using 5600 + index.
+- `examples/camera_check.py` receives a camera on any computer, Windows included: it checks
+  that packets arrive (and says why when they don't), then shows the picture with pip's
+  OpenCV through an SDP file. Verified on Windows.
+
+### Project
+- README: supported systems, how multi-vehicle simulation and cameras work (with diagrams).
+- Releases are automated: pushing a `vX.Y.Z` tag checks the version and changelog, tests,
+  builds and publishes the GitHub release. The version lives only in `src/hangar/__init__.py`.
 
 ## 0.1.0 (2026-10-18)
 
