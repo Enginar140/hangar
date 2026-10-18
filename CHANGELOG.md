@@ -1,22 +1,30 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-10-18)
 
-- Vehicles start where the Gazebo world is: a world's `<spherical_coordinates>` becomes the
-  SITL home unless the scenario sets `home`, and a world without one gets the scenario's,
-  so QGroundControl and MAVProxy show the vehicles in the right place. `hangar worlds`
-  lists each world's location.
-- **Worlds from real places**: `hangar world create --lat --lon --size --name`, or the Scenario
-  tab's button, builds a world with real terrain and satellite imagery through
-  [hangar-earth](https://github.com/Enginar140/hangar-earth), installed on first use. Generated
-  worlds live in `~/.local/share/hangar/worlds` and appear everywhere.
-- Vehicles in a hangar-earth world start on the ground: a pose's `z` is the height above the
-  terrain at its x, y.
-- Relative files in a world (heightmaps, textures, meshes) keep working after Hangar copies
-  the world into the run directory.
-- **Ready-made worlds**: `hangar sources fetch hangar_worlds` installs
-  [hangar-worlds](https://github.com/Enginar140/hangar-worlds) (airfield, mission arena, town);
-  the installer offers it with Gazebo. New `archive` source kind: release tarballs without git.
+### Worlds from real places
+- `hangar world create --lat --lon --size --name`, or **Create a world from a real place** in
+  the Scenario tab, builds a Gazebo world for any point on Earth with real terrain (Copernicus
+  DEM, 30 m) and satellite imagery (Sentinel-2, 10 m) through
+  [hangar-earth](https://github.com/Enginar140/hangar-earth), installed on first use (about
+  200 MB, no sudo). Worlds go to `~/.local/share/hangar/worlds` and appear everywhere.
+- Vehicles in such a world start on the ground: a pose's `z` is the height above the terrain.
+
+### Ready-made worlds
+- `hangar sources fetch hangar_worlds` installs [hangar-worlds](https://github.com/Enginar140/hangar-worlds):
+  an airfield with a 400 m runway, a 1 km mission arena with targets and air-defence zones, and
+  a small town. The installer offers it together with Gazebo.
+
+### Location
+- Vehicles start where the Gazebo world is: a world's `<spherical_coordinates>` becomes the SITL
+  home unless the scenario sets `home`, and a world without one gets the scenario's, so
+  QGroundControl and the MAVProxy map show the vehicles in the right place. `hangar worlds` lists
+  each world's location.
+
+### Under the hood
+- Relative files in a world (heightmaps, textures, meshes) keep working after Hangar copies the
+  world into the run directory.
+- New `archive` source kind: release tarballs, unpacked safely without git.
 
 ## 0.2.0 (2026-10-18)
 
