@@ -39,6 +39,8 @@ paths, `sleep`s, and ports scattered across scripts. Hangar replaces all of it w
 
 ## Install
 
+Linux, tested on Ubuntu 24.04 (x86_64). Other systems: see [Supported systems](#supported-systems).
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Enginar140/hangar/main/install.sh | bash
 ```
@@ -219,27 +221,108 @@ camera_pose: [0.5, 0, 0.05, 0, 0, 0]  # optional, where `camera: true` mounts a 
 
 Then add the folder: `hangar config add catalog.model_paths /path/to/models`.
 
+## Supported systems
+
+Hangar runs on **Linux**. The installer stops on other systems.
+
+| System | Status |
+|---|---|
+| **Ubuntu 24.04, x86_64** | **Tested end to end**: built-in physics, Gazebo Harmonic 8.15, cameras, installer |
+| Ubuntu 22.04, x86_64 | Supported by the installer (Gazebo Harmonic packages exist for it), not tested yet |
+| Other Linux distributions, x86_64 | Hangar and built-in physics vehicles should work; install Gazebo yourself. The installer warns and asks first. Not tested |
+| ARM 32-bit (armv7) | ArduPilot publishes prebuilt SITL for it. Not tested |
+| ARM 64-bit (Jetson, Raspberry Pi OS 64-bit) | No prebuilt SITL from ArduPilot; use `--build-ardupilot` to build it. Not tested |
+| Windows (WSL2 with Ubuntu) | Not tested. SITL should work and Gazebo may work through WSLg; v4l2loopback is not available |
+| macOS | Not supported: no prebuilt SITL, and the installer is Linux-only |
+
+Python 3.11, 3.12 and 3.13 are tested in CI. The installer uses uv to provide
+Python 3.12, so the system Python does not matter. Gazebo works best with a
+GPU; cameras with `headless: true` need EGL (headless rendering).
+
 ## How it works
 
+### Many vehicles at once
+
+Every vehicle is its own ArduPilot SITL process, started with `-I <index>`.
+ArduPilot shifts all of an instance's ports by `10 × index`, and Hangar builds
+the whole port plan on that rule. Each vehicle also gets its own MAVLink system
+id (`index + 1`) and its own working directory (eeprom, logs).
+
+```mermaid
+flowchart LR
+    subgraph gz["Gazebo: one world"]
+        m0["alpha: model copy<br/>ArduPilotPlugin on udp 9002"]
+        m1["scout: model copy<br/>ArduPilotPlugin on udp 9012"]
+    end
+    s0["arduplane -I 0<br/>sysid 1"]
+    s1["arducopter -I 1<br/>sysid 2"]
+    m0 <-->|"JSON physics"| s0
+    m1 <-->|"JSON physics"| s1
+    s0 -->|"tcp 5760"| r["Hangar MAVLink router<br/>+ telemetry for the UI"]
+    s1 -->|"tcp 5770"| r
+    r -->|"udp 14550"| gcs["QGroundControl / Mission Planner"]
+    r -->|"udp 14560+i ..."| more["extra outputs"]
+    s1 -.->|"tcp 5772: only scout"| script["your script"]
 ```
-             ┌──────────── hangar (one process, asyncio) ────────────┐
- scenario ─▶ │ preflight ─▶ world builder ─▶ supervisor              │
-             │                  │              │  ├─ gz sim           │
-             │                  │              │  ├─ arduplane -I0 ◀─┼─ tcp 5760
-             │                  ▼              │  └─ arducopter -I1 ◀┼─ tcp 5770
-             │        per-instance models      ▼                      │
-             │        (fdm/camera ports)   MAVLink router + telemetry ┼─▶ udp 14550 (GCS)
-             │                                  │                     ┼─▶ udp 15000+i …
-             │                                  ▼                     │
-             │                           terminal UI / `hangar up`    │
-             └───────────────────────────────────────────────────────┘
+
+- **Gazebo vehicles.** A Gazebo plugin cannot be given a different port per
+  `<include>`, so Hangar copies each vehicle's model into the run directory.
+  The copy gets a unique name and its own FDM port (`9002 + 10 × index`);
+  meshes and materials are symlinks to the originals, which are never
+  modified. All copies go into one generated world, with the world's own
+  vehicles removed, so the scenario alone decides what flies. Hangar waits
+  until Gazebo has opened every vehicle's FDM port before it starts the SITLs.
+- **Built-in physics vehicles** need no Gazebo. Their start position (home) is
+  moved by their `pose`, so they do not all spawn on the same spot.
+- **MAVLink.** Instead of one MAVProxy per vehicle, Hangar connects to each
+  SITL's first port (`tcp 5760 + 10 × index`) and forwards the traffic both
+  ways to every output. QGroundControl and Mission Planner can share udp 14550
+  because each vehicle has its own system id. Scripts can use the vehicle's
+  free SITL ports (`5762/5763 + 10 × index`), where only that vehicle talks.
+- **Processes.** SITLs, Gazebo and camera helpers run in their own process
+  groups with their output going to log files. Stopping signals each whole
+  group, so nothing keeps running after Hangar.
+
+### Cameras
+
+Cameras use ArduPilot's `GstCameraPlugin` (part of ardupilot_gazebo), which
+encodes the rendered image as H.264 and sends it as RTP over UDP.
+
+```mermaid
+flowchart LR
+    orig["model.sdf<br/>original, untouched"] --> copy["run copy + camera link:<br/>sensor, GstCameraPlugin,<br/>udp_port 5600 + index,<br/>fixed joint to the body"]
+    copy --> gzr["Gazebo renders frames"]
+    en["Hangar: gz topic ... enable_streaming = true"] --> gzr
+    gzr -->|"H.264 / RTP over UDP"| reader{"one reader"}
+    reader --> viewer["viewer window"]
+    reader --> py["your Python / OpenCV"]
+    reader --> v4l2["v4l2 bridge to /dev/videoN<br/>many readers: OpenCV, ROS, OBS"]
 ```
+
+1. With `camera: true` and a model that has no camera, Hangar adds a camera
+   link to the run copy of the model: a small body, a `camera` sensor with
+   the requested resolution, field of view and FPS, the `GstCameraPlugin`
+   pointed at `udp 5600 + index`, and a fixed joint. The joint goes to
+   `base_link`, or to the base link of the model the vehicle includes (iris
+   and zephyr do this). The mount position comes from `camera.pose`, from the
+   model's `camera_pose` in Hangar's vehicle list (the nose of each SITL_Models
+   plane), or a default just ahead of the body.
+2. If a model already has a camera, Hangar only changes its port, plus the
+   resolution or FPS if the scenario sets them.
+3. The world gets Gazebo's Sensors system if it has none, since without it
+   cameras produce nothing.
+4. Once Gazebo is up, Hangar finds the camera's `enable_streaming` topic with
+   `gz topic -l` and switches it on. From then on the stream is on the UDP
+   port, and the Camera window shows the code to read it.
+
+### Code map
 
 - `scenario.py`: the scenario schema (pydantic). Unknown keys are errors, not silently ignored.
 - `ports.py`: the port plan, output templates and conflict checks.
-- `world.py`: copies each Gazebo model into the run directory with its own ports.
+- `world.py`: per-vehicle model copies, camera injection, the generated world.
 - `process.py`: child processes in their own process group, with logs and a clean stop.
-- `mavlink.py`: per-vehicle router, telemetry and commands.
+- `mavlink.py`: per-vehicle router, telemetry and commands; outputs can change while running.
+- `camera.py`: enabling streams, the v4l2 bridge and viewer, usage snippets.
 - `supervisor.py`: puts everything together. `tui/` and `cli.py` are thin front-ends.
 
 Every run gets its own directory under `~/.local/state/hangar/runs/` with the

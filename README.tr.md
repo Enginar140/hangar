@@ -36,6 +36,8 @@ dağılmıştır. Hangar bunların yerine şunları koyar:
 
 ## Kurulum
 
+Linux gerekir; Ubuntu 24.04 (x86_64) üzerinde test edildi. Diğer sistemler için: [Desteklenen sistemler](#desteklenen-sistemler).
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Enginar140/hangar/main/install.sh | bash
 ```
@@ -209,3 +211,103 @@ camera_pose: [0.5, 0, 0.05, 0, 0, 0]   # opsiyonel: `camera: true` kamerayı bur
 ```
 
 Sonra model klasörünü ekle: `hangar config add catalog.model_paths /yol/models`.
+
+## Desteklenen sistemler
+
+Hangar **Linux** üzerinde çalışır. Kurulum script'i başka sistemlerde durur.
+
+| Sistem | Durum |
+|---|---|
+| **Ubuntu 24.04, x86_64** | **Uçtan uca test edildi**: dahili fizik, Gazebo Harmonic 8.15, kameralar, kurulum |
+| Ubuntu 22.04, x86_64 | Kurulum script'i destekliyor (Gazebo Harmonic paketleri var), henüz test edilmedi |
+| Diğer Linux dağıtımları, x86_64 | Hangar ve dahili fizikli araçlar çalışmalı; Gazebo'yu kendin kurman gerekir. Kurulum script'i uyarıp onay ister. Test edilmedi |
+| ARM 32-bit (armv7) | ArduPilot bunun için hazır SITL yayınlıyor. Test edilmedi |
+| ARM 64-bit (Jetson, Raspberry Pi OS 64-bit) | ArduPilot'un hazır SITL derlemesi yok; `--build-ardupilot` ile derlenmeli. Test edilmedi |
+| Windows (WSL2 + Ubuntu) | Test edilmedi. SITL'in çalışması beklenir, Gazebo WSLg ile çalışabilir; v4l2loopback yok |
+| macOS | Desteklenmiyor: hazır SITL yok, kurulum script'i sadece Linux için |
+
+Python 3.11, 3.12 ve 3.13 CI'da test ediliyor. Kurulum Python 3.12'yi uv ile
+getirdiği için sistemdeki Python sürümü önemli değil. Gazebo için bir GPU
+olması iyi olur; `headless: true` ile kamera kullanmak EGL (penceresiz çizim)
+gerektirir.
+
+## Nasıl çalışır
+
+### Aynı anda birden fazla araç
+
+Her araç, `-I <sıra>` ile başlatılan ayrı bir ArduPilot SITL sürecidir.
+ArduPilot bir kopyanın tüm portlarını `10 × sıra` kadar kaydırır; Hangar'ın
+port planı bu kurala dayanır. Her araç ayrıca kendi MAVLink sistem ID'sini
+(`sıra + 1`) ve kendi çalışma klasörünü (eeprom, loglar) alır.
+
+```mermaid
+flowchart LR
+    subgraph gz["Gazebo: tek dünya"]
+        m0["alpha: model kopyası<br/>ArduPilotPlugin udp 9002'de"]
+        m1["scout: model kopyası<br/>ArduPilotPlugin udp 9012'de"]
+    end
+    s0["arduplane -I 0<br/>sysid 1"]
+    s1["arducopter -I 1<br/>sysid 2"]
+    m0 <-->|"JSON fizik"| s0
+    m1 <-->|"JSON fizik"| s1
+    s0 -->|"tcp 5760"| r["Hangar MAVLink router<br/>+ arayüz için telemetri"]
+    s1 -->|"tcp 5770"| r
+    r -->|"udp 14550"| gcs["QGroundControl / Mission Planner"]
+    r -->|"udp 14560+i ..."| more["ek çıkışlar"]
+    s1 -.->|"tcp 5772: sadece scout"| script["senin script'in"]
+```
+
+- **Gazebo araçları.** Bir Gazebo eklentisine her `<include>` için farklı port
+  verilemez. Bu yüzden Hangar her aracın modelini çalıştırma klasörüne
+  kopyalar. Kopya benzersiz bir ad ve kendi FDM portunu (`9002 + 10 × sıra`)
+  alır. Mesh ve malzemeler orijinallere giden kısayollardır (symlink);
+  orijinal dosyalar hiç değişmez. Tüm kopyalar üretilen tek bir dünyaya
+  konur. Dünyanın kendi araçları çıkarılır, böylece neyin uçacağına sadece
+  senaryo karar verir. Hangar, SITL'leri başlatmadan önce Gazebo'nun her
+  aracın FDM portunu açmasını bekler.
+- **Dahili fizikli araçlar** Gazebo gerektirmez. Başlangıç konumları (home)
+  `pose` değerine göre kaydırılır, böylece hepsi aynı noktada doğmaz.
+- **MAVLink.** Hangar araç başına bir MAVProxy çalıştırmaz. Onun yerine her
+  SITL'in ilk portuna (`tcp 5760 + 10 × sıra`) bağlanır ve trafiği her iki
+  yönde tüm çıkışlara iletir. Her aracın kendi sistem ID'si olduğu için
+  QGroundControl ve Mission Planner udp 14550'yi paylaşabilir. Script'ler
+  aracın boştaki SITL portlarını (`5762/5763 + 10 × sıra`) kullanabilir;
+  o portlarda sadece o araç konuşur.
+- **Süreçler.** SITL'ler, Gazebo ve kamera yardımcıları kendi süreç
+  gruplarında çalışır, çıktıları log dosyalarına gider. Durdurunca her
+  grubun tamamına sinyal gönderilir; Hangar kapandıktan sonra arkada hiçbir
+  şey kalmaz.
+
+### Kameralar
+
+Kameralar ArduPilot'un `GstCameraPlugin` eklentisini (ardupilot_gazebo'nun
+parçası) kullanır. Bu eklenti çizilen görüntüyü H.264 olarak kodlar ve UDP
+üzerinden RTP olarak gönderir.
+
+```mermaid
+flowchart LR
+    orig["model.sdf<br/>orijinal, dokunulmaz"] --> copy["çalıştırma kopyası + kamera:<br/>sensör, GstCameraPlugin,<br/>udp_port 5600 + sıra,<br/>gövdeye sabit bağlantı"]
+    copy --> gzr["Gazebo kareleri çizer"]
+    en["Hangar: gz topic ... enable_streaming = true"] --> gzr
+    gzr -->|"UDP üzerinden H.264 / RTP"| reader{"tek okuyucu"}
+    reader --> viewer["görüntüleme penceresi"]
+    reader --> py["senin Python / OpenCV kodun"]
+    reader --> v4l2["v4l2 köprüsü ile /dev/videoN<br/>çok okuyucu: OpenCV, ROS, OBS"]
+```
+
+1. `camera: true` yazılmışsa ve modelde kamera yoksa, Hangar modelin
+   çalıştırma kopyasına bir kamera ekler. Eklenen parçalar: küçük bir gövde;
+   istenen çözünürlük, görüş açısı ve FPS ile bir `camera` sensörü;
+   `udp 5600 + sıra` portuna gönderen `GstCameraPlugin`; ve sabit bir
+   bağlantı (joint). Bağlantı `base_link`'e yapılır. Araç gövdesini başka bir
+   modelden alıyorsa (iris ve zephyr böyle) o modelin gövdesine yapılır.
+   Kameranın konumu sırasıyla şuralardan gelir: `camera.pose`, Hangar'ın araç
+   listesindeki `camera_pose` (SITL_Models uçaklarının burnu) ya da gövdenin
+   biraz önündeki varsayılan nokta.
+2. Modelin kendi kamerası varsa Hangar sadece portunu değiştirir. Senaryoda
+   çözünürlük ya da FPS verilmişse onları da uygular.
+3. Dünyada Gazebo'nun Sensors sistemi yoksa eklenir; o olmadan kameralar
+   görüntü üretmez.
+4. Gazebo açılınca Hangar kameranın `enable_streaming` konusunu
+   (`gz topic -l` ile) bulur ve açar. Bundan sonra görüntü UDP portundadır;
+   Kamera penceresi onu okuyacak kodu gösterir.
