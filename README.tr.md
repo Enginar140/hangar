@@ -192,7 +192,14 @@ for frame in frames(port=5600, width=1280, height=720):
 ```
 
 Bu yöntem pip'teki `opencv-python` ile de çalışır; o paketin kendi GStreamer
-desteği olmasa bile. UDP portunu aynı anda yalnızca bir program okuyabilir.
+desteği olmasa bile.
+
+**Başka bir bilgisayarda (Windows dahil):** `pip install opencv-python` ile
+[`examples/camera_check.py`](examples/camera_check.py) dosyasını
+`python camera_check.py 5600` olarak çalıştır. Script önce paketlerin
+gelip gelmediğine bakar; gelmiyorsa olası sebepleri sıralar (yanlış IP,
+güvenlik duvarı, Windows'ta "Ortak" ağ). Gelirse görüntüyü OpenCV'nin FFmpeg
+desteğiyle ve bir SDP dosyasıyla gösterir; GStreamer gerekmez. UDP portunu aynı anda yalnızca bir program okuyabilir.
 Aynı kamerayı birden fazla program okuyacaksa kameraya bir `v4l2_device` ver
 ve o cihazı `cv2.VideoCapture('/dev/video2')` ile aç.
 

@@ -197,6 +197,13 @@ for frame in frames(port=5600, width=1280, height=720):
 ```
 
 It works with pip's `opencv-python`, which has no GStreamer support of its own.
+
+**On another computer, Windows included:** run
+[`examples/camera_check.py`](examples/camera_check.py) with `pip install opencv-python`
+and `python camera_check.py 5600`. It first checks that packets arrive. If
+they don't, it lists the usual causes: wrong IP, firewall, a "Public"
+Windows network. It then shows the picture through OpenCV's FFmpeg with an
+SDP file, so no GStreamer is needed.
 Only one program can read a UDP port at a time. If several programs need the
 same camera, give it a `v4l2_device` and open that device with
 `cv2.VideoCapture('/dev/video2')`.
