@@ -104,6 +104,16 @@ TR: dict[str, str] = {
 
 # Long texts are keyed by an ID, so English needs a table too.
 EN: dict[str, str] = {
+    "WORLD_CREATE_HELP": (
+        "Real terrain (Copernicus DEM, 30 m) and satellite imagery (Sentinel-2, 10 m) for the area around this "
+        "point, downloaded from their public sources. Tip: in Google Maps or OpenStreetMap, right-click a "
+        "place to copy its coordinates. Vehicles are placed on the ground; their GPS shows the real place."
+    ),
+    "HANGAR_EARTH_OFFER": (
+        "Worlds from real places are built by hangar-earth, which is not installed yet.\n\n"
+        "Install it now? It goes into Hangar's own folder, needs no sudo and takes about 200 MB. "
+        "License: {license}."
+    ),
     "CAMERA_OUTPUT_HELP": (
         "The IP address of the receiving device (find it there with 'hostname -I'). A multicast address "
         "such as 239.0.0.1 reaches every device on the network. {i} in the port is the vehicle number. "
@@ -127,6 +137,16 @@ EN: dict[str, str] = {
 }
 
 TR.update({
+    "WORLD_CREATE_HELP": (
+        "Bu noktanın çevresi için gerçek arazi (Copernicus DEM, 30 m) ve uydu görüntüsü (Sentinel-2, 10 m) "
+        "açık kaynaklarından indirilir. İpucu: Google Haritalar'da ya da OpenStreetMap'te bir yere sağ "
+        "tıklayıp koordinatını kopyalayabilirsin. Araçlar yere konur; GPS'leri gerçek konumu gösterir."
+    ),
+    "HANGAR_EARTH_OFFER": (
+        "Gerçek yerlerden dünyaları hangar-earth üretir ve henüz kurulu değil.\n\n"
+        "Şimdi kurulsun mu? Hangar'ın kendi klasörüne kurulur, sudo gerekmez, yaklaşık 200 MB yer kaplar. "
+        "Lisans: {license}."
+    ),
     "CAMERA_OUTPUT_HELP": (
         "Alıcı cihazın IP adresi (o cihazda 'hostname -I' ile bulunur). 239.0.0.1 gibi bir multicast adres "
         "ağdaki tüm cihazlara ulaşır. Porttaki {i} araç numarasıdır. Alıcıda: QGroundControl > Video > "
@@ -148,6 +168,20 @@ TR.update({
         "{i} her araca kendi portunu verir. Değişiklik simülasyon çalışırken de anında uygulanır."
     ),
     "Quality": "Kalite",
+    "Create a world from a real place": "Gerçek bir yerden dünya oluştur",
+    "Latitude": "Enlem",
+    "Longitude": "Boylam",
+    "Size": "Boyut",
+    "Create": "Oluştur",
+    "Building the world, this takes about 15-60 seconds...": "Dünya oluşturuluyor, yaklaşık 15-60 saniye sürer...",
+    "The world could not be built; see the Logs tab.": "Dünya oluşturulamadı; Günlük sekmesine bak.",
+    "World ready": "Dünya hazır",
+    "Enter a latitude and a longitude (decimal degrees, e.g. 39.88 and 33.23).":
+        "Enlem ve boylam gir (ondalık derece, örn. 39.88 ve 33.23).",
+    "Latitude must be between -85 and 85, longitude between -180 and 180.":
+        "Enlem -85 ile 85, boylam -180 ile 180 arasında olmalı.",
+    "The name may only contain letters, digits, '_' and '-'.": "Ad sadece harf, rakam, '_' ve '-' içerebilir.",
+    "A world with this name already exists.": "Bu adda bir dünya zaten var.",
     "Stream": "Yayın",
     "via Hangar: this computer + every address below": "Hangar üzerinden: bu bilgisayar + aşağıdaki adresler",
     "direct: the camera sends to one address only": "doğrudan: kamera sadece tek adrese gönderir",

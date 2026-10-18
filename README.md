@@ -272,6 +272,23 @@ camera_pose: [0.5, 0, 0.05, 0, 0, 0]  # optional, where `camera: true` mounts a 
 
 Then add the folder: `hangar config add catalog.model_paths /path/to/models`.
 
+## Worlds from real places
+
+```bash
+hangar world create --lat 39.88 --lon 33.23 --size 3000 --name ankara_hills
+```
+
+You can also use **Create a world from a real place** in the Scenario tab.
+[hangar-earth](https://github.com/Enginar140/hangar-earth) builds a Gazebo
+world for any point on Earth, with real terrain (Copernicus DEM, 30 m) and
+satellite imagery (Sentinel-2, 10 m), in about 15 seconds. Hangar installs it
+the first time, after showing its license. The world sits at its real
+coordinates, so vehicles start there: their GPS, QGroundControl and the
+MAVProxy map all show the real place. Each vehicle is placed on the ground at
+its `pose`, so `z` is the height above the terrain.
+
+![Hills east of Ankara in Gazebo](https://raw.githubusercontent.com/Enginar140/hangar-earth/main/docs/images/oblique.jpg)
+
 ## Supported systems
 
 Hangar runs on **Linux**. The installer stops on other systems.

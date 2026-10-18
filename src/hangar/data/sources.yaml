@@ -82,3 +82,16 @@ mavproxy:
     deps: [pymavlink, defusedxml, pyserial, numpy, pynmeagps, opencv-python, matplotlib, Pillow]
     # wxPython has no Linux wheels on PyPI; its project publishes them per Ubuntu release
     wxpython: https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-{ubuntu}/wxPython-4.2.2-{py}-{py}-linux_x86_64.whl
+
+hangar_earth:
+  title: hangar-earth (Gazebo worlds from real places)
+  kind: python
+  url: https://github.com/Enginar140/hangar-earth
+  ref: "0.1.0"
+  dir: tools/hangar-earth
+  license: MIT (the generator); the terrain and imagery it downloads carry their own terms, written to each world's ATTRIBUTION.txt
+  required: false
+  purpose: Builds a Gazebo world for any place on Earth from Copernicus DEM terrain and Sentinel-2
+    imagery ('hangar world create'). Its own environment, about 200 MB (GDAL inside rasterio); no sudo.
+  packages:
+    deps: ["hangar-earth @ https://github.com/Enginar140/hangar-earth/releases/download/v0.1.0/hangar_earth-0.1.0-py3-none-any.whl"]

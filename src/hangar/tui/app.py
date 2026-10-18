@@ -54,6 +54,7 @@ from .screens import (
     OutputDialog,
     PathDialog,
     VehicleEditor,
+    WorldCreateDialog,
     copy_text,
     highlight,
 )
@@ -199,6 +200,7 @@ class HangarApp(App):
                         yield Label(t("World"))
                         yield Select([(t("none (built-in physics)"), "")], id="sc-world", allow_blank=False,
                                      value="", compact=True)
+                        yield Button(t("Create a world from a real place"), id="world-create", compact=True)
                         yield Label(t("Speed-up"))
                         yield Input(id="sc-speedup", type="number")
                         with Horizontal(classes="row"):
@@ -809,6 +811,58 @@ class HangarApp(App):
         self._refresh_map_button()
         self.notify(t("Map and console opened: every vehicle is on one map. '!command' in the command line "
                       "goes to MAVProxy.") if opened else t("Map closed"), timeout=6)
+
+    # --- worlds from real places (hangar-earth) -------------------------------
+
+    @on(Button.Pressed, "#world-create")
+    def _world_create(self) -> None:
+        def done(params) -> None:
+            if params:
+                self._world_worker(params)
+
+        self.push_screen(WorldCreateDialog(set(self.catalog.worlds)), done)
+
+    @work(exclusive=True, group="world")
+    async def _world_worker(self, params: dict) -> None:
+        from .. import sources
+
+        exe = self.settings.hangar_earth()
+        if exe is None:
+            src = sources.load_manifest()["hangar_earth"]
+            question = t("HANGAR_EARTH_OFFER").replace("{license}", src.license)
+            if not await self.push_screen_wait(ConfirmDialog(question, ok=t("Install"), variant="primary")):
+                return
+            self.supervisor.log("hangar-earth", f"installing {src.title}", "event")
+            try:
+                await asyncio.to_thread(sources._python_env, src, lambda line: self.call_from_thread(
+                    self.supervisor.log, "hangar-earth", line, "info"))
+            except Exception as e:  # noqa: BLE001
+                self.notify(f"hangar-earth: {e}", severity="error", timeout=10)
+                return
+            exe = self.settings.hangar_earth()
+            assert exe
+        name = params["name"]
+        out = paths.data_dir() / "worlds" / name
+        self.action_tab("tab-logs")
+        self.notify(t("Building the world, this takes about 15-60 seconds..."), timeout=6)
+        argv = [str(exe), "create", "--lat", str(params["lat"]), "--lon", str(params["lon"]),
+                "--size", str(params["size"]), "--name", name, "--out", str(out)]
+        proc = await asyncio.create_subprocess_exec(*argv, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.STDOUT)
+        assert proc.stdout
+        async for raw in proc.stdout:
+            self.supervisor.log("hangar-earth", raw.decode(errors="replace").rstrip(), "info")
+        if await proc.wait() != 0:
+            self.notify(t("The world could not be built; see the Logs tab."), severity="error", timeout=10)
+            return
+        self.catalog.scan()
+        if self.supervisor.state in (SimState.IDLE, SimState.ERROR):
+            self.scenario.world = name
+            self._scenario_changed()
+        else:
+            self._sync_form()
+        self.supervisor.log("hangar-earth", f"world {name} is ready", "event")
+        self.notify(f"{t('World ready')}: {name}", timeout=6)
 
     @work(exclusive=True, group="map")
     async def _offer_mavproxy(self) -> None:

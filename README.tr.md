@@ -262,6 +262,23 @@ camera_pose: [0.5, 0, 0.05, 0, 0, 0]   # opsiyonel: `camera: true` kamerayı bur
 
 Sonra model klasörünü ekle: `hangar config add catalog.model_paths /yol/models`.
 
+## Gerçek yerlerden dünyalar
+
+```bash
+hangar world create --lat 39.88 --lon 33.23 --size 3000 --name ankara_hills
+```
+
+Senaryo sekmesindeki **Gerçek bir yerden dünya oluştur** butonu da aynı işi
+yapar. [hangar-earth](https://github.com/Enginar140/hangar-earth), dünyanın
+herhangi bir noktası için gerçek arazisi (Copernicus DEM, 30 m) ve uydu
+görüntüsüyle (Sentinel-2, 10 m) bir Gazebo dünyası üretir; yaklaşık 15 saniye
+sürer. Hangar onu ilk kullanımda, lisansını gösterip onay alarak kurar. Dünya
+gerçek koordinatlarında durur, araçlar da orada başlar: GPS, QGroundControl ve
+MAVProxy haritası gerçek yeri gösterir. Araçlar `pose` konumunda yere konur;
+yani `z` arazinin üstündeki yüksekliktir.
+
+![Ankara'nın doğusundaki tepeler Gazebo'da](https://raw.githubusercontent.com/Enginar140/hangar-earth/main/docs/images/oblique.jpg)
+
 ## Desteklenen sistemler
 
 Hangar **Linux** üzerinde çalışır. Kurulum script'i başka sistemlerde durur.

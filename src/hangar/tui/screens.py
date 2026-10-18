@@ -619,3 +619,76 @@ class CameraOutputDialog(_Dialog):
     def _ok(self) -> None:
         if self._validate():
             self.dismiss((str(self.query_one("#cam-vehicle", Select).value), self._target()))
+
+
+class WorldCreateDialog(_Dialog):
+    """A world from a real place: centre, size and name. Returns a dict."""
+
+    SIZES = [("1 km × 1 km", 1000), ("2 km × 2 km", 2000), ("3 km × 3 km", 3000), ("5 km × 5 km", 5000),
+             ("10 km × 10 km", 10000)]
+
+    def __init__(self, existing: set[str]):
+        super().__init__()
+        self.existing = existing
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(classes="dialog compact"):
+            yield Label(t("Create a world from a real place"), classes="dialog-title")
+            with Horizontal(classes="field-row"):
+                yield Label(t("Latitude"))
+                yield Input(placeholder="39.88", id="lat", type="number", compact=True)
+                yield Label(t("Longitude"))
+                yield Input(placeholder="33.23", id="lon", type="number", compact=True)
+            with Horizontal(classes="field-row"):
+                yield Label(t("Size"))
+                yield Select(self.SIZES, id="size", allow_blank=False, value=3000, compact=True)
+            yield Label(t("Name"))
+            yield Input(placeholder="ankara_hills", id="name")
+            yield Static(t("WORLD_CREATE_HELP"), classes="hint-text")
+            yield Static(id="world-problem")
+            with Horizontal(classes="dialog-buttons"):
+                yield Button(t("Create"), variant="primary", id="ok")
+                yield Button(t("Cancel"), id="cancel")
+
+    def on_mount(self) -> None:
+        self._check()
+        self.query_one("#lat", Input).focus()
+
+    def _values(self) -> dict | None:
+        try:
+            lat = float(self.query_one("#lat", Input).value)
+            lon = float(self.query_one("#lon", Input).value)
+        except ValueError:
+            return None
+        default = f"place_{lat:.3f}_{lon:.3f}".replace(".", "_").replace("-", "m")
+        name = self.query_one("#name", Input).value.strip() or default
+        return {"lat": lat, "lon": lon, "size": int(self.query_one("#size", Select).value), "name": name}
+
+    @on(Input.Changed)
+    @on(Select.Changed)
+    def _check(self) -> bool:
+        import re
+
+        v = self._values()
+        problem = ""
+        if v is None:
+            problem = t("Enter a latitude and a longitude (decimal degrees, e.g. 39.88 and 33.23).")
+        elif not -85 < v["lat"] < 85 or not -180 <= v["lon"] <= 180:
+            problem = t("Latitude must be between -85 and 85, longitude between -180 and 180.")
+        elif not re.fullmatch(r"[A-Za-z0-9_-]+", v["name"]):
+            problem = t("The name may only contain letters, digits, '_' and '-'.")
+        elif v["name"] in self.existing:
+            problem = t("A world with this name already exists.")
+        self.query_one("#world-problem", Static).update(f"[yellow]{escape(problem)}[/]" if problem else "")
+        self.query_one("#ok", Button).disabled = bool(problem)
+        return not problem
+
+    @on(Button.Pressed, "#cancel")
+    def _cancel(self) -> None:
+        self.dismiss(None)
+
+    @on(Input.Submitted)
+    @on(Button.Pressed, "#ok")
+    def _ok(self) -> None:
+        if self._check():
+            self.dismiss(self._values())

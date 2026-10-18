@@ -186,6 +186,38 @@ def _print_log_line(line: str, warnings_only: bool) -> None:
     console.file.flush()  # line by line, also through `| grep`
 
 
+def cmd_world(args, settings: Settings) -> int:
+    from . import sources
+
+    exe = settings.hangar_earth()
+    if exe is None:
+        src = sources.load_manifest()["hangar_earth"]
+        console.print(f"[b]{src.title}[/] is not installed.\n  {src.url} @ {src.ref}\n"
+                      f"  license: [yellow]{src.license}[/]\n  {src.purpose}")
+        if not _confirm("Install it now?", args.yes):
+            return 1
+        try:
+            sources.fetch(src)
+        except Exception as e:  # noqa: BLE001
+            err.print(f"[red]install failed: {e}[/]")
+            return 1
+        exe = settings.hangar_earth()
+        assert exe
+    out = paths.data_dir() / "worlds" / args.name
+    if out.exists() and not args.force:
+        err.print(f"[red]{out} exists[/] (use --force to replace it)")
+        return 1
+    argv = [str(exe), "create", "--lat", str(args.lat), "--lon", str(args.lon), "--size", str(args.size),
+            "--name", args.name, "--out", str(out), "--texture", str(args.texture)]
+    import subprocess
+
+    code = subprocess.call(argv)
+    if code == 0:
+        console.print(f"\n[green]✓[/] world [b]{args.name}[/] is ready: put [b]world: {args.name}[/] in a scenario "
+                      "or pick it in the Scenario tab. Vehicles are placed on the ground; pose z is height above it.")
+    return code
+
+
 def cmd_ports(args, settings: Settings) -> int:
     from .catalog import Catalog
     from .supervisor import Supervisor
@@ -393,6 +425,17 @@ def build_parser() -> argparse.ArgumentParser:
     models = sub.add_parser("models", help="list vehicles that can be launched")
     models.add_argument("--type", choices=["copter", "plane", "rover", "boat"])
     sub.add_parser("worlds", help="list Gazebo worlds")
+
+    world = sub.add_parser("world", help="make a Gazebo world from a real place (hangar-earth)")
+    wsub = world.add_subparsers(dest="world_command", required=True)
+    wc = wsub.add_parser("create", help="terrain + satellite imagery for an area")
+    wc.add_argument("--lat", type=float, required=True, help="centre latitude, e.g. 39.88")
+    wc.add_argument("--lon", type=float, required=True, help="centre longitude, e.g. 33.23")
+    wc.add_argument("--size", type=float, default=3000, help="edge length in metres (default 3000)")
+    wc.add_argument("--name", required=True, help="world name: letters, digits, '_' and '-'")
+    wc.add_argument("--texture", type=int, default=2048, choices=(1024, 2048, 4096))
+    wc.add_argument("--force", action="store_true", help="replace a world with the same name")
+    wc.add_argument("-y", "--yes", action="store_true", help="install hangar-earth without asking")
     sub.add_parser("doctor", help="check the installation")
 
     logs = sub.add_parser("logs", help="show the log of the latest (or a given) run")
@@ -417,7 +460,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMANDS = {
     "tui": cmd_tui, "up": cmd_up, "ports": cmd_ports, "init": cmd_init, "models": cmd_models,
-    "worlds": cmd_worlds, "doctor": cmd_doctor, "logs": cmd_logs, "config": cmd_config, "sources": cmd_sources,
+    "worlds": cmd_worlds, "world": cmd_world, "doctor": cmd_doctor, "logs": cmd_logs, "config": cmd_config,
+    "sources": cmd_sources,
 }
 
 

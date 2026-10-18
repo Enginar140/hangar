@@ -9,9 +9,12 @@ the run directory is touched.
 
 from __future__ import annotations
 
+import json
 import math
 import re
+import sys
 import xml.etree.ElementTree as ET
+from array import array
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -67,6 +70,8 @@ def build_world(world_sdf: Path, vehicles: list[WorldVehicle], out_dir: Path,
     world = tree.getroot().find("world")
     if world is None:
         raise ValueError(f"{world_sdf} has no <world> element")
+    _absolute_files(world, world_sdf.parent)
+    terrain = TerrainHeights.load(world_sdf.parent)
 
     _remove_vehicle_includes(world, ardupilot_models)
     if home is not None:
@@ -80,12 +85,59 @@ def build_world(world_sdf: Path, vehicles: list[WorldVehicle], out_dir: Path,
         ET.SubElement(inc, "uri").text = f"model://{v.instance_name}"
         ET.SubElement(inc, "name").text = v.instance_name
         pose = ET.SubElement(inc, "pose", {"degrees": "true"})
-        pose.text = v.pose
+        pose.text = terrain.lift(v.pose) if terrain else v.pose
 
     out = out_dir / f"{world_sdf.stem}.sdf"
     ET.indent(tree)
     tree.write(out, encoding="utf-8", xml_declaration=True)
     return out
+
+
+class TerrainHeights:
+    """Ground heights of a hangar-earth world, so vehicles start on the ground:
+    a pose's z is then the height above the terrain at its x, y."""
+
+    def __init__(self, size: float, n: int, decimetres: array):
+        self.size, self.n, self.dm = size, n, decimetres
+
+    @classmethod
+    def load(cls, folder: Path) -> TerrainHeights | None:
+        meta_file = folder / "hangar-earth.json"
+        if not meta_file.exists():
+            return None
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        data = array("H")
+        data.frombytes((folder / meta["heights"]["file"]).read_bytes())
+        if sys.byteorder != "little":
+            data.byteswap()
+        n = int(meta["heights"]["n"])
+        if len(data) != n * n:
+            return None
+        return cls(float(meta["size_m"]), n, data)
+
+    def height_at(self, east: float, north: float) -> float:
+        half = self.size / 2
+        col = round(min(max((east + half) / self.size, 0), 1) * (self.n - 1))
+        row = round(min(max((half - north) / self.size, 0), 1) * (self.n - 1))
+        return self.dm[row * self.n + col] / 10
+
+    def lift(self, pose: str) -> str:
+        v = [float(x) for x in pose.split()]
+        v[2] += self.height_at(v[0], v[1])
+        return " ".join(f"{x:g}" for x in v)
+
+
+def _absolute_files(world: ET.Element, base: Path) -> None:
+    """Relative file references (heightmaps, textures, meshes) still work after the
+    world is copied into the run directory."""
+    for el in world.iter():
+        if el.tag in ("uri", "diffuse", "normal", "filename") and el.text:
+            ref = el.text.strip()
+            if "://" in ref or ref.startswith("/"):
+                continue
+            candidate = base / ref
+            if candidate.exists():
+                el.text = str(candidate.resolve())
 
 
 def _set_location(world: ET.Element, home) -> None:

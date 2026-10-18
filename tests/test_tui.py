@@ -219,3 +219,30 @@ async def test_ports_tab_camera_outputs(settings):
         app.query_one("#vid-remove", Button).press()
         await pilot.pause(0.5)
         assert app.scenario.vehicles[0].camera.outputs == []
+
+
+async def test_world_create_dialog_validates(settings):
+    from hangar.tui.screens import WorldCreateDialog
+
+    app = HangarApp(scenario=Scenario(name="t"), settings=settings)
+    results = []
+    async with app.run_test(size=(140, 50)) as pilot:
+        app.push_screen(WorldCreateDialog({"runway"}), results.append)
+        await pilot.pause()
+        dlg = app.screen
+        ok = dlg.query_one("#ok", Button)
+        assert ok.disabled  # no coordinates yet
+        dlg.query_one("#lat", Input).value = "39.88"
+        dlg.query_one("#lon", Input).value = "33.23"
+        dlg.query_one("#name", Input).value = "runway"
+        await pilot.pause()
+        assert ok.disabled  # name taken
+        dlg.query_one("#name", Input).value = "ankara hills"
+        await pilot.pause()
+        assert ok.disabled  # space not allowed
+        dlg.query_one("#name", Input).value = "ankara_hills"
+        await pilot.pause()
+        assert not ok.disabled
+        ok.press()
+        await pilot.pause()
+    assert results == [{"lat": 39.88, "lon": 33.23, "size": 3000, "name": "ankara_hills"}]

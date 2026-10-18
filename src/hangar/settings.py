@@ -177,10 +177,21 @@ class Settings:
 
     def resolved_world_paths(self) -> list[Path]:
         src = paths.sources_dir()
+        generated = paths.data_dir() / "worlds"  # `hangar world create`, one folder per world
+        made = sorted(p for p in generated.iterdir() if p.is_dir()) if generated.is_dir() else []
         return _existing(
             [_expand(p) for p in self.world_paths]
             + [src / "SITL_Models" / "Gazebo" / "worlds", src / "ardupilot_gazebo" / "worlds"]
+            + made
         )
+
+    def hangar_earth(self) -> Path | None:
+        """The hangar-earth generator from `hangar sources fetch hangar_earth`, else PATH."""
+        own = paths.sources_dir() / "tools" / "hangar-earth"
+        if (own / ".hangar-fetched").exists() and (own / "bin" / "hangar-earth").exists():
+            return own / "bin" / "hangar-earth"
+        found = shutil.which("hangar-earth")
+        return Path(found) if found else None
 
     def resolved_plugin_paths(self) -> list[Path]:
         return _existing(

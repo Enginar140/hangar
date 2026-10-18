@@ -50,6 +50,10 @@ class Source:
         return (self.path / ".git").exists() or (self.path / ".hangar-fetched").exists()
 
 
+def _say(line: str) -> None:
+    print(line, flush=True)  # keep the order with the output of the tools run next
+
+
 def load_manifest() -> dict[str, Source]:
     with (paths.package_data() / "sources.yaml").open(encoding="utf-8") as f:
         raw = yaml.safe_load(f)
@@ -135,7 +139,7 @@ def python_env_commands(source: Source, uv: str, venv: Path, ubuntu: str | None,
     return cmds
 
 
-def _python_env(source: Source, progress=print) -> str:
+def _python_env(source: Source, progress=_say) -> str:
     """Build the tool's own environment in place (a venv cannot be moved later);
     a failed build is removed, and only a finished one gets the marker file."""
     uv = find_uv()
@@ -158,7 +162,7 @@ def _python_env(source: Source, progress=print) -> str:
     return source.ref
 
 
-def _download(source: Source, progress=print) -> str:
+def _download(source: Source, progress=_say) -> str:
     machine = platform.machine()
     arch = SITL_ARCH.get(machine)
     if arch is None and any("{arch}" in u for u in source.files.values()):

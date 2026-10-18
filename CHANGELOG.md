@@ -6,6 +6,14 @@
   SITL home unless the scenario sets `home`, and a world without one gets the scenario's,
   so QGroundControl and MAVProxy show the vehicles in the right place. `hangar worlds`
   lists each world's location.
+- **Worlds from real places**: `hangar world create --lat --lon --size --name`, or the Scenario
+  tab's button, builds a world with real terrain and satellite imagery through
+  [hangar-earth](https://github.com/Enginar140/hangar-earth), installed on first use. Generated
+  worlds live in `~/.local/share/hangar/worlds` and appear everywhere.
+- Vehicles in a hangar-earth world start on the ground: a pose's `z` is the height above the
+  terrain at its x, y.
+- Relative files in a world (heightmaps, textures, meshes) keep working after Hangar copies
+  the world into the run directory.
 
 ## 0.2.0 (2026-10-18)
 
