@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.3 (2026-10-18)
 
 - **`first_instance`** in a scenario: start the SITLs at another instance number (every port
   moves by 10 per instance), to run next to a SITL that is already running. The busy-port error
