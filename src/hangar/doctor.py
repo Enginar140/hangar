@@ -47,13 +47,6 @@ def run_checks(settings: Settings) -> list[Check]:
     add(Check("Python", "ok" if v >= (3, 11) else "fail", f"{v.major}.{v.minor}.{v.micro}",
               "Hangar needs Python 3.11 or newer"))
 
-    ap = settings.resolved_ardupilot_dir()
-    if ap and ap.is_dir():
-        add(Check("ArduPilot", "ok", str(ap)))
-    else:
-        add(Check("ArduPilot", "fail", "not found",
-                  "hangar sources fetch ardupilot   or   hangar config set ardupilot.dir /path/to/ardupilot"))
-
     bin_dir = settings.resolved_bin_dir()
     for binary in sorted(set(BINARIES.values())):
         exe = bin_dir / binary if bin_dir else None
@@ -62,13 +55,13 @@ def run_checks(settings: Settings) -> list[Check]:
         elif exe and exe.is_file():
             add(Check(f"SITL {binary}", "fail", "not executable", f"chmod +x {exe}"))
         else:
-            target = binary.removeprefix("ardu")
-            add(Check(f"SITL {binary}", "fail", "not built",
-                      f"hangar sources build ardupilot   (or: ./waf configure --board sitl && ./waf {target})"))
+            add(Check(f"SITL {binary}", "fail", "not found",
+                      "hangar sources fetch ardupilot_sitl   (prebuilt, seconds)   or   "
+                      "hangar config set ardupilot.dir /path/to/your/ardupilot"))
 
-    dp = settings.default_params_dir()
-    add(Check("Default parameters", "ok" if dp else "warn", str(dp) if dp else "not found",
-              "Comes with the ArduPilot source tree (Tools/autotest/default_params)"))
+    at = settings.autotest_dir()
+    add(Check("ArduPilot parameter files", "ok" if at else "warn", str(at) if at else "not found",
+              "hangar sources fetch ardupilot_sitl   (downloads them with the binaries)"))
 
     gz = shutil.which("gz")
     if gz:

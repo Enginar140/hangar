@@ -1,16 +1,22 @@
 """Third-party sources, fetched only with the user's consent.
 
 Hangar's repository contains only Hangar. ArduPilot, its Gazebo plugin and
-the example models are cloned on the user's machine from their upstream
-repositories, after their licenses have been shown, so Hangar never
-redistributes anyone else's code.
+the example models are downloaded on the user's machine from their upstream
+servers (git repositories, or ArduPilot's firmware server for prebuilt SITL),
+after their licenses have been shown, so Hangar never redistributes anyone
+else's code.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import platform
 import shutil
 import subprocess
+import tempfile
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,6 +36,8 @@ class Source:
     required: bool = False
     submodules: bool = False
     dir: str = ""
+    kind: str = "git"  # git | download
+    files: dict[str, str] = field(default_factory=dict)  # download: relative path -> URL
     build: dict = field(default_factory=dict)
 
     @property
@@ -58,9 +66,10 @@ def read_lock() -> dict[str, dict]:
         return {}
 
 
-def _write_lock(source: Source, commit: str) -> None:
+def _write_lock(source: Source, commit: str, extra: dict | None = None) -> None:
     lock = read_lock()
-    lock[source.id] = {"url": source.url, "ref": source.ref, "commit": commit, "license": source.license}
+    lock[source.id] = {"url": source.url, "ref": source.ref, "commit": commit, "license": source.license,
+                       **(extra or {})}
     _lock_path().parent.mkdir(parents=True, exist_ok=True)
     _lock_path().write_text(json.dumps(lock, indent=2), encoding="utf-8")
 
@@ -69,8 +78,53 @@ def _git(args: list[str], cwd: Path | None = None) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True)
 
 
+SITL_ARCH = {"x86_64": "SITL_x86_64_linux_gnu", "armv7l": "SITL_arm_linux_gnueabihf"}
+
+
 def fetch(source: Source) -> str:
-    """Clone (or update) ``source`` at its pinned ref. Returns the commit."""
+    """Download ``source`` at its pinned version. Returns the commit or version."""
+    if source.kind == "download":
+        return _download(source)
+    return _clone(source)
+
+
+def _download(source: Source, progress=print) -> str:
+    machine = platform.machine()
+    arch = SITL_ARCH.get(machine)
+    if arch is None and any("{arch}" in u for u in source.files.values()):
+        raise RuntimeError(f"no prebuilt SITL for {machine}; use `hangar sources fetch ardupilot` "
+                           "and `hangar sources build ardupilot`")
+    dest = source.path
+    staging = Path(tempfile.mkdtemp(prefix=".download-", dir=_ensure(dest.parent)))
+    hashes: dict[str, str] = {}
+    try:
+        for rel, url in source.files.items():
+            url = url.replace("{arch}", arch or "")
+            target = staging / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            progress(f"  {rel}  <-  {url}")
+            req = urllib.request.Request(url, headers={"User-Agent": "hangar"})
+            with urllib.request.urlopen(req, timeout=60) as r, target.open("wb") as f:
+                shutil.copyfileobj(r, f)
+            hashes[rel] = hashlib.sha256(target.read_bytes()).hexdigest()
+            if rel.startswith("bin/"):
+                target.chmod(0o755)
+        (staging / ".hangar-fetched").write_text(source.ref, encoding="utf-8")
+        if dest.exists():
+            shutil.rmtree(dest)
+        os.replace(staging, dest)  # all files or none
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    _write_lock(source, source.ref, {"arch": arch, "sha256": hashes})
+    return source.ref
+
+
+def _ensure(d: Path) -> Path:
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _clone(source: Source) -> str:
     if not shutil.which("git"):
         raise RuntimeError("git is required: sudo apt install git")
     dest = source.path

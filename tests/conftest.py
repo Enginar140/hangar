@@ -1,6 +1,5 @@
 """Fixtures: an isolated Hangar home and a tiny fake model library."""
 
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -72,10 +71,12 @@ def library(tmp_path) -> Path:
 @pytest.fixture
 def settings(library, tmp_path) -> Settings:
     ap = tmp_path / "ardupilot"
-    dp = ap / "Tools" / "autotest" / "default_params"
-    dp.mkdir(parents=True)
-    for f in ("plane.parm", "copter.parm", "rover.parm", "motorboat.parm"):
-        (dp / f).write_text(textwrap.dedent("FOO 1\n"))
+    autotest = ap / "Tools" / "autotest"
+    # same layout as ArduPilot: plane's defaults live in models/, the rest in default_params/
+    for f in ("models/plane.parm", "default_params/copter.parm", "default_params/rover.parm",
+              "default_params/motorboat.parm"):
+        (autotest / f).parent.mkdir(parents=True, exist_ok=True)
+        (autotest / f).write_text("FOO 1\n")
     return Settings(
         ardupilot_dir=str(ap),
         model_paths=[str(library / "models")],

@@ -3,14 +3,37 @@
 # own repositories, only after you have seen their license and said yes.
 # `ref` is a tag, branch or commit; pinning keeps every user on the same code.
 
+ardupilot_sitl:
+  title: ArduPilot SITL 4.7.2 (official prebuilt binaries)
+  kind: download
+  url: https://firmware.ardupilot.org
+  ref: "4.7.2"
+  dir: ardupilot-sitl
+  license: GPL-3.0
+  required: true
+  purpose: Ready-to-run arducopter / arduplane / ardurover from ArduPilot's build server, plus the
+    parameter files they start from. Takes seconds; no compiler needed.
+  files:
+    # {arch} is SITL_x86_64_linux_gnu or SITL_arm_linux_gnueabihf
+    bin/arducopter: https://firmware.ardupilot.org/Copter/stable-4.7.2/{arch}/arducopter
+    bin/arduplane: https://firmware.ardupilot.org/Plane/stable-4.7.2/{arch}/arduplane
+    bin/ardurover: https://firmware.ardupilot.org/Rover/stable-4.7.2/{arch}/ardurover
+    autotest/models/plane.parm: https://raw.githubusercontent.com/ArduPilot/ardupilot/Plane-4.7.2/Tools/autotest/models/plane.parm
+    autotest/default_params/copter.parm: https://raw.githubusercontent.com/ArduPilot/ardupilot/Plane-4.7.2/Tools/autotest/default_params/copter.parm
+    autotest/default_params/quadplane.parm: https://raw.githubusercontent.com/ArduPilot/ardupilot/Plane-4.7.2/Tools/autotest/default_params/quadplane.parm
+    autotest/default_params/rover.parm: https://raw.githubusercontent.com/ArduPilot/ardupilot/Plane-4.7.2/Tools/autotest/default_params/rover.parm
+    autotest/default_params/motorboat.parm: https://raw.githubusercontent.com/ArduPilot/ardupilot/Plane-4.7.2/Tools/autotest/default_params/motorboat.parm
+    autotest/default_params/gazebo-iris.parm: https://raw.githubusercontent.com/ArduPilot/ardupilot/Plane-4.7.2/Tools/autotest/default_params/gazebo-iris.parm
+    autotest/default_params/gazebo-zephyr.parm: https://raw.githubusercontent.com/ArduPilot/ardupilot/Plane-4.7.2/Tools/autotest/default_params/gazebo-zephyr.parm
+
 ardupilot:
-  title: ArduPilot (SITL autopilot)
+  title: ArduPilot source (build SITL yourself)
   url: https://github.com/ArduPilot/ardupilot
   ref: Plane-4.7.2          # stable 4.7.2 tree; builds copter, plane and rover
   license: GPL-3.0
   submodules: true
-  required: true
-  purpose: Builds the arducopter / arduplane / ardurover SITL binaries and provides default parameters.
+  required: false
+  purpose: Only if you want to modify ArduPilot. Builds the SITL binaries from source (10-30 min).
   build:
     prereqs: Tools/environment_install/install-prereqs-ubuntu.sh -y
     commands:

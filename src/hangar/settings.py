@@ -20,6 +20,7 @@ LIST_KEYS = {
     "catalog.model_paths",
     "catalog.world_paths",
 }
+PREBUILT_DIR = "ardupilot-sitl"  # `hangar sources fetch ardupilot_sitl` lands here
 SCALAR_KEYS = {
     "language",
     "ardupilot.dir",
@@ -136,15 +137,27 @@ class Settings:
         return auto if auto.is_dir() else None
 
     def resolved_bin_dir(self) -> Path | None:
+        """Explicit bin_dir, else a built ArduPilot tree, else the prebuilt download."""
         if self.ardupilot_bin_dir:
             return _expand(self.ardupilot_bin_dir)
         ap = self.resolved_ardupilot_dir()
-        return ap / "build" / "sitl" / "bin" if ap else None
+        built = ap / "build" / "sitl" / "bin" if ap else None
+        if built and built.is_dir():
+            return built
+        prebuilt = paths.sources_dir() / PREBUILT_DIR / "bin"
+        if prebuilt.is_dir():
+            return prebuilt
+        return built
 
-    def default_params_dir(self) -> Path | None:
+    def autotest_dir(self) -> Path | None:
+        """ArduPilot's Tools/autotest (default_params/, models/), from the source
+        tree or the files downloaded with the prebuilt binaries."""
         ap = self.resolved_ardupilot_dir()
-        d = ap / "Tools" / "autotest" / "default_params" if ap else None
-        return d if d and d.is_dir() else None
+        for d in (ap / "Tools" / "autotest" if ap else None,
+                  paths.sources_dir() / PREBUILT_DIR / "autotest"):
+            if d and d.is_dir():
+                return d
+        return None
 
     def resolved_model_paths(self) -> list[Path]:
         src = paths.sources_dir()

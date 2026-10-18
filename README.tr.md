@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/Enginar140/hangar/main/install.sh |
 Kurulum her adımdan önce sorar:
 
 1. [uv](https://docs.astral.sh/uv/) ile Hangar'ı kullanıcı dizinine kurar. sudo gerekmez, sistem Python'una dokunulmaz.
-2. İstersen ArduPilot SITL'i indirir ve derler.
+2. ArduPilot'un **resmi hazır derlenmiş SITL**'ini indirir: arducopter, arduplane ve ardurover 4.7.2, toplam yaklaşık 21 MB. Birkaç saniye sürer, derleyici gerekmez. Kaynaktan derlemek istersen `--build-ardupilot` seçeneğini kullan.
 3. İstersen Gazebo Harmonic'i, ArduPilot Gazebo eklentisini ve örnek modelleri kurar.
 4. Sonunda `hangar doctor` ile kurulumu kontrol eder.
 
@@ -51,7 +51,7 @@ hangar doctor
 Hangar MIT lisanslıdır ve içinde sadece kendi kodu vardır. ArduPilot (GPL-3.0),
 ardupilot_gazebo (LGPL-3.0) ve SITL_Models (lisans belirtilmemiş) Hangar'ın
 içinde **dağıtılmaz**. `hangar sources fetch` her projenin lisansını gösterir,
-onay ister ve projeyi sabitlenmiş bir sürümde kendi reposundan indirir. Yani
+onay ister ve projeyi sabitlenmiş bir sürümde kendi sunucusundan indirir (hazır SITL için firmware.ardupilot.org, diğerleri için GitHub). Yani
 kodu doğrudan kaynağından almış olursun. Hangi commit'lerin indirildiği
 `~/.local/share/hangar/sources/lock.json` dosyasında kayıtlıdır.
 

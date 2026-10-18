@@ -166,10 +166,9 @@ class Supervisor:
                 continue
             models[v.name] = m
             exe = self.catalog.binary_path(m)
-            if exe is None:
-                errors.append("ArduPilot location not set: `hangar config set ardupilot.dir PATH`")
-            elif not exe.is_file():
-                errors.append(f"{v.name}: {exe} not found (build with ./waf {m.binary.removeprefix('ardu')})")
+            if exe is None or not exe.is_file():
+                errors.append(f"{v.name}: {m.binary} not found; run `hangar sources fetch ardupilot_sitl` "
+                              "or `hangar config set ardupilot.dir PATH`")
             elif not os.access(exe, os.X_OK):
                 errors.append(f"{v.name}: {exe} is not executable (chmod +x {exe})")
             res = self.catalog.resolve_params(m)

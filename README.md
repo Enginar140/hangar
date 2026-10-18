@@ -44,7 +44,8 @@ curl -fsSL https://raw.githubusercontent.com/Enginar140/hangar/main/install.sh |
 The installer asks before each step:
 
 1. installs [uv](https://docs.astral.sh/uv/) and Hangar for your user (no sudo, and the system Python is left alone),
-2. optionally downloads and builds ArduPilot SITL,
+2. downloads ArduPilot's **official prebuilt SITL** (arducopter, arduplane, ardurover 4.7.2, about 21 MB,
+   seconds, no compiler); `--build-ardupilot` builds from source instead,
 3. optionally installs Gazebo Harmonic, the ArduPilot Gazebo plugin and example models,
 4. runs `hangar doctor`.
 
@@ -64,8 +65,9 @@ hangar doctor
 Hangar is MIT-licensed and contains only its own code. ArduPilot (GPL-3.0),
 ardupilot_gazebo (LGPL-3.0) and SITL_Models (no license stated) are **not**
 bundled. `hangar sources fetch` shows each project's license and asks before
-cloning it from its own repository at a pinned version, so you get it directly
-from upstream. `hangar sources` lists what is installed, and the exact commits
+downloading it at a pinned version from its own upstream server
+(firmware.ardupilot.org for the prebuilt SITL, GitHub for the rest), so you
+get it directly from upstream. `hangar sources` lists what is installed, and the exact commits
 are recorded in `~/.local/share/hangar/sources/lock.json`.
 
 ## Use

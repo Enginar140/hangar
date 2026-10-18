@@ -6,7 +6,8 @@
 # Options (pass after `bash -s --` when piping):
 #   --yes            answer yes to every question (CI, unattended installs)
 #   --gazebo         also install Gazebo Harmonic, the ArduPilot Gazebo plugin and example models
-#   --no-ardupilot   do not download/build ArduPilot (use `hangar config set ardupilot.dir ...`)
+#   --no-ardupilot   skip ArduPilot (use `hangar config set ardupilot.dir ...` for your own build)
+#   --build-ardupilot   build ArduPilot from source instead of using the official prebuilt SITL
 #   --from PATH      install Hangar from a local checkout instead of GitHub
 #
 # Every step says what it will do and asks first. uv provides Python 3.12, so
@@ -20,6 +21,7 @@ REF="${HANGAR_REF:-main}"
 ASSUME_YES=0
 WITH_GAZEBO=ask
 WITH_ARDUPILOT=1
+BUILD_ARDUPILOT=0
 FROM=""
 
 while [ $# -gt 0 ]; do
@@ -28,8 +30,9 @@ while [ $# -gt 0 ]; do
         --gazebo) WITH_GAZEBO=1 ;;
         --no-gazebo) WITH_GAZEBO=0 ;;
         --no-ardupilot) WITH_ARDUPILOT=0 ;;
+        --build-ardupilot) BUILD_ARDUPILOT=1 ;;
         --from) FROM="$2"; shift ;;
-        -h|--help) sed -n '2,15p' "$0" 2>/dev/null || true; exit 0 ;;
+        -h|--help) sed -n '2,16p' "$0" 2>/dev/null || true; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -134,16 +137,18 @@ if [ "$WITH_ARDUPILOT" = 1 ]; then
     step "ArduPilot SITL"
     if "$HANGAR" doctor 2>/dev/null | grep -q "✓ SITL arduplane"; then
         ok "ArduPilot SITL binaries already configured"
+    elif [ "$BUILD_ARDUPILOT" = 1 ]; then
+        info "Building ArduPilot from source (10-30 minutes, installs its prerequisites with sudo)."
+        ensure_cmds git
+        hangar_cmd sources fetch ardupilot
+        hangar_cmd sources build ardupilot
     else
-        info "Hangar needs ArduPilot's SITL binaries. You can point it at an existing build"
-        info "(hangar config set ardupilot.dir PATH) or let it download and build ArduPilot."
-        info "Building takes 10-30 minutes and installs ArduPilot's prerequisites with sudo."
-        if ask "Download and build ArduPilot now?"; then
-            ensure_cmds git
-            hangar_cmd sources fetch ardupilot
-            hangar_cmd sources build ardupilot
+        info "Hangar uses ArduPilot's official prebuilt SITL binaries (about 21 MB, seconds)."
+        info "Already have your own build? Answer no and run: hangar config set ardupilot.dir PATH"
+        if ask "Download ArduPilot SITL 4.7.2?"; then
+            hangar_cmd sources fetch ardupilot_sitl
         else
-            warn "skipped; later: hangar sources fetch ardupilot && hangar sources build ardupilot"
+            warn "skipped; later: hangar sources fetch ardupilot_sitl"
         fi
     fi
 fi

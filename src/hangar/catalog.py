@@ -159,9 +159,9 @@ class Catalog:
         dirs += self.settings.param_dirs()
         for plugin_root in self.settings.resolved_plugin_paths():
             dirs.append(plugin_root.parent / "config")  # ardupilot_gazebo/config
-        dp = self.settings.default_params_dir()
-        if dp:
-            dirs.append(dp)
+        at = self.settings.autotest_dir()
+        if at:
+            dirs += [at / "default_params", at / "models"]
         return [d for d in dirs if d.is_dir()]
 
     def _find_param(self, name: str, model_dir: Path | None) -> Path | None:
@@ -177,9 +177,9 @@ class Catalog:
         """Base defaults first, then model-specific files, so the latter win."""
         files: list[Path] = []
         missing: list[str] = []
-        dp = self.settings.default_params_dir()
-        for name in model.defaults:
-            f = dp / name if dp else None
+        autotest = self.settings.autotest_dir()
+        for name in model.defaults:  # relative to Tools/autotest, as in ArduPilot's vehicleinfo.py
+            f = autotest / name if autotest else None
             if f and f.is_file():
                 files.append(f)
             else:

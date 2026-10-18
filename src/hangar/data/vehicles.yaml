@@ -3,7 +3,8 @@
 # any of these fields with its own `hangar.yaml`.
 #
 #   type:      copter | plane | rover | boat   (picks the ArduPilot binary)
-#   defaults:  base parameter files from ArduPilot's Tools/autotest/default_params
+#   defaults:  base parameter files, relative to ArduPilot's Tools/autotest
+#              (the same files sim_vehicle.py uses, see pysim/vehicleinfo.py)
 #   params:    extra parameter files (looked up next to the model and in config/ dirs)
 #   skip:      true to hide a model that is not a vehicle on its own
 
@@ -13,27 +14,27 @@ builtin:
   sitl:plane:
     type: plane
     sitl_model: plane
-    defaults: [plane.parm]
+    defaults: [models/plane.parm]
     description: Fixed-wing, built-in physics
   sitl:copter:
     type: copter
     sitl_model: quad
-    defaults: [copter.parm]
+    defaults: [default_params/copter.parm]
     description: Quadcopter, built-in physics
   sitl:quadplane:
     type: plane
     sitl_model: quadplane
-    defaults: [quadplane.parm]
+    defaults: [default_params/quadplane.parm]
     description: VTOL quadplane, built-in physics
   sitl:rover:
     type: rover
     sitl_model: rover
-    defaults: [rover.parm]
+    defaults: [default_params/rover.parm]
     description: Ground rover, built-in physics
   sitl:boat:
     type: boat
     sitl_model: motorboat
-    defaults: [rover.parm, motorboat.parm]
+    defaults: [default_params/rover.parm, default_params/motorboat.parm]
     description: Motor boat, built-in physics
 
 # Gazebo models (ArduPilot/ardupilot_gazebo and ArduPilot/SITL_Models).
@@ -42,11 +43,11 @@ gazebo:
   iris_with_gimbal:       {type: copter, params: [gazebo-iris-gimbal.parm]}
   iris_with_ardupilot:    {type: copter, params: [gazebo-iris.parm]}
   zephyr_with_ardupilot:  {type: plane,  params: [gazebo-zephyr.parm]}
-  alti_transition_quad:   {type: plane,  defaults: [quadplane.parm]}
+  alti_transition_quad:   {type: plane,  defaults: [default_params/quadplane.parm]}
   bicopter_with_ardupilot: {type: copter}
   hexapod_copter:         {type: copter}
   quadruped:              {type: copter}
-  skywalker_x8_quad:      {type: plane,  defaults: [quadplane.parm]}
+  skywalker_x8_quad:      {type: plane,  defaults: [default_params/quadplane.parm]}
   skywalker_x8:           {type: plane}
   skycat_tvbs:            {type: plane}
   mini_talon_vtail:       {type: plane}
@@ -66,7 +67,7 @@ gazebo:
 
 # Base parameter files per vehicle type, used when a model lists none.
 type_defaults:
-  copter: [copter.parm]
-  plane: [plane.parm]
-  rover: [rover.parm]
-  boat: [rover.parm, motorboat.parm]
+  copter: [default_params/copter.parm]
+  plane: [models/plane.parm]
+  rover: [default_params/rover.parm]
+  boat: [default_params/rover.parm, default_params/motorboat.parm]
