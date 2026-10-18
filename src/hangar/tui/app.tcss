@@ -217,3 +217,79 @@ ModalScreen {
     margin-top: 1;
     color: $warning;
 }
+
+/* --- ports tab editor / camera dialog ------------------------------------ */
+
+#ports-pane {
+    height: 1fr;
+}
+
+.section {
+    text-style: bold;
+    margin: 1 2 0 0;
+    height: 1;
+}
+
+.section-bar {
+    height: auto;
+}
+
+.section-bar Button {
+    margin: 1 1 0 0;
+}
+
+#outputs {
+    height: auto;
+    max-height: 14;
+}
+
+#ports {
+    height: auto;
+}
+
+.hint-text {
+    height: auto;
+    color: $text-muted;
+    margin: 1 0;
+}
+
+.field-row {
+    height: auto;
+    margin-top: 1;
+}
+
+.field-row Label {
+    margin: 0 1 0 0;
+    padding-top: 0;
+    width: auto;
+}
+
+.field-row Input {
+    width: 10;
+    margin-right: 2;
+}
+
+.field-row Select {
+    width: 1fr;
+    margin-right: 2;
+}
+
+#host {
+    width: 18;
+}
+
+#preview {
+    height: auto;
+    margin-top: 1;
+}
+
+.camera-dialog {
+    height: 90%;
+}
+
+#snippet-box {
+    height: 1fr;
+    border: round $panel-lighten-1;
+    padding: 0 1;
+    margin-top: 1;
+}

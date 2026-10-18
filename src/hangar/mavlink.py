@@ -235,14 +235,30 @@ class VehicleLink:
 
     async def start(self) -> None:
         for ep in self.endpoints:
-            out = _OUTPUTS[ep.kind](ep, self._to_vehicle)
-            try:
-                await out.open()
-            except OSError as e:
-                self._text("error", f"output {ep}: {e}")
-                continue
-            self._outputs.append(out)
+            await self._open_output(ep)
         self._task = asyncio.create_task(self._run(), name=f"link-{self.name}")
+
+    async def _open_output(self, ep: Endpoint) -> bool:
+        out = _OUTPUTS[ep.kind](ep, self._to_vehicle)
+        try:
+            await out.open()
+        except OSError as e:
+            self._text("error", f"output {ep}: {e}")
+            return False
+        self._outputs.append(out)
+        return True
+
+    async def set_outputs(self, endpoints: list[Endpoint]) -> None:
+        """Change outputs while running: open the new ones, close the dropped ones."""
+        for out in [o for o in self._outputs if o.endpoint not in endpoints]:
+            out.close()
+            self._outputs.remove(out)
+            self._text("info", f"output removed: {out.endpoint}")
+        current = {o.endpoint for o in self._outputs}
+        for ep in endpoints:
+            if ep not in current and await self._open_output(ep):
+                self._text("info", f"output added: {ep}")
+        self.endpoints = list(endpoints)
 
     async def stop(self) -> None:
         self._stopping = True

@@ -18,7 +18,7 @@ from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
     Button,
     DataTable,
@@ -39,10 +39,21 @@ from ..catalog import Catalog
 from ..doctor import run_checks
 from ..i18n import t
 from ..mavlink import CommandError
+from ..ports import PlanError, output_rows
 from ..scenario import Scenario, VehicleSpec
 from ..settings import Settings
 from ..supervisor import LogLine, SimState, Supervisor, SupervisorError, VehicleRuntime
-from .screens import TYPE_ICONS, ConfirmDialog, DoctorScreen, HelpScreen, PathDialog, VehicleEditor
+from .screens import (
+    TYPE_ICONS,
+    CameraScreen,
+    ConfirmDialog,
+    DoctorScreen,
+    HelpScreen,
+    OutputDialog,
+    PathDialog,
+    VehicleEditor,
+    highlight,
+)
 
 LEVEL_STYLE = {"error": "red", "warning": "yellow", "event": "cyan", "info": ""}
 STATUS_STYLE = {
@@ -55,6 +66,7 @@ STATE_STYLE = {
 }
 FLEET_COLUMNS = ["#", "Name", "Model", "Status", "Mode", "Armed", "Ready", "Alt", "Speed", "Battery", "GPS"]
 LAST_SCENARIO = "last-scenario.yaml"
+OUTPUT_HINT = {"udp": "sends", "udpin": "listens (udp)", "tcpin": "listens (tcp)"}
 
 
 def _fmt(value: float | None, unit: str = "", digits: int = 1) -> str:
@@ -155,8 +167,16 @@ class HangarApp(App):
                     yield Switch(id="log-warn")
                 yield RichLog(id="log", markup=True, wrap=True, max_lines=5000)
             with TabPane(t("Ports"), id="tab-ports"):
-                yield Static(id="preflight")
-                yield DataTable(id="ports", cursor_type="row", zebra_stripes=True)
+                with VerticalScroll(id="ports-pane"):
+                    yield Static(id="preflight")
+                    with Horizontal(classes="section-bar"):
+                        yield Label(t("MAVLink outputs"), classes="section")
+                        yield Button(t("Add output"), id="out-add", variant="primary", compact=True)
+                        yield Button(t("Remove output"), id="out-remove", variant="error", compact=True)
+                    yield DataTable(id="outputs", cursor_type="row", zebra_stripes=True)
+                    yield Static(id="ports-help", classes="hint-text")
+                    yield Label(t("Ports of each vehicle"), classes="section")
+                    yield DataTable(id="ports", cursor_type="row", zebra_stripes=True)
             with TabPane(t("Scenario"), id="tab-scenario"):
                 with Horizontal(id="scenario-form"):
                     with Vertical(classes="form"):
@@ -167,8 +187,6 @@ class HangarApp(App):
                                      value="", compact=True)
                         yield Label(t("Speed-up"))
                         yield Input(id="sc-speedup", type="number")
-                        yield Label(t("Outputs for every vehicle"))
-                        yield Input(id="sc-outputs", placeholder="udp:127.0.0.1:14550")
                         with Horizontal(classes="row"):
                             yield Switch(id="sc-headless")
                             yield Label(t("Headless Gazebo"))
@@ -182,8 +200,13 @@ class HangarApp(App):
         for col in FLEET_COLUMNS:
             fleet.add_column(t(col), key=col)
         ports = self._main.query_one("#ports", DataTable)
-        for col in ("#", "Name", "SysID", "MAVLink", "Gazebo FDM", "Camera", "Outputs"):
-            ports.add_column(col, key=col)
+        for col in ("#", "Name", "SysID", "Hangar ↔ SITL", "Scripts (this vehicle only)", "Gazebo FDM",
+                    "Camera"):
+            ports.add_column(t(col), key=col)
+        outputs = self._main.query_one("#outputs", DataTable)
+        for col in ("Vehicle", "Output", "For", "Shared"):
+            outputs.add_column(t(col), key=col)
+        self._output_rows: list = []
         self._sync_form()
         self._refresh_all()
         self.set_interval(0.5, self._tick)
@@ -317,6 +340,7 @@ class HangarApp(App):
         if rt:
             outs = ", ".join(str(e) for e in rt.ports.outputs) or "—"
             grid.add_row("MAVLink", f"tcp:{rt.ports.serial0} → {outs}", "", "")
+            grid.add_row(t("Scripts"), f"tcp:127.0.0.1:{rt.ports.serial1}  ({t('only this vehicle')})", "", "")
             if rt.ports.camera:
                 cam = f"udp:{rt.ports.camera}"
                 if rt.spec.camera and rt.spec.camera.v4l2_device:
@@ -373,15 +397,34 @@ class HangarApp(App):
         plan = self.supervisor.plan() if running else pf.plan
         if plan:
             for r in plan.rows():
-                table.add_row(r["index"], r["name"], r["sysid"], r["mavlink"], r["fdm"], r["camera"],
-                              r["outputs"])
+                table.add_row(r["index"], r["name"], r["sysid"], r["mavlink"], r["scripts"], r["fdm"], r["camera"])
+        self._refresh_outputs()
+
+    def _refresh_outputs(self) -> None:
+        table = self._main.query_one("#outputs", DataTable)
+        cursor = table.cursor_row
+        table.clear()
+        try:
+            self._output_rows = output_rows(self.scenario)
+        except PlanError as e:
+            self._output_rows = []
+            self._main.query_one("#ports-help", Static).update(f"[red]✗ {escape(str(e))}[/]")
+            return
+        for i, r in enumerate(self._output_rows):
+            what = OUTPUT_HINT.get(r.endpoint.kind, "")
+            scope = t("every vehicle") if r.scope == "*" else r.scope
+            shared = Text(f"+{len(r.shared_with)} {t('vehicles')}", "yellow") if r.shared_with else Text("—", "dim")
+            table.add_row(Text(r.vehicle, "bold"), Text.assemble(str(r.endpoint), (f"  {t(what)}", "dim")),
+                          f"{scope}  [dim]{escape(r.template)}[/]", shared, key=str(i))
+        if self._output_rows:
+            table.move_cursor(row=min(max(cursor, 0), len(self._output_rows) - 1))
+        first = self.scenario.vehicles[0].name if self.scenario.vehicles else "?"
+        self._main.query_one("#ports-help", Static).update(
+            t("PORTS_HELP").replace("{first}", escape(first or "?"))
+        )
 
     def _refresh_yaml(self) -> None:
-        from rich.syntax import Syntax
-
-        self._main.query_one("#sc-yaml", Static).update(
-            Syntax(self.scenario.dump(), "yaml", theme="ansi_dark", background_color="default")
-        )
+        self._main.query_one("#sc-yaml", Static).update(highlight(self.scenario.dump(), "yaml"))
 
     def _sync_form(self) -> None:
         self._syncing_form = True
@@ -395,7 +438,6 @@ class HangarApp(App):
             world.set_options(worlds)
             world.value = sc.world or ""
             self._main.query_one("#sc-speedup", Input).value = f"{sc.speedup:g}"
-            self._main.query_one("#sc-outputs", Input).value = ", ".join(sc.outputs)
             self._main.query_one("#sc-headless", Switch).value = sc.headless
         finally:
             self.call_after_refresh(self._end_sync)
@@ -497,7 +539,6 @@ class HangarApp(App):
 
     @on(Input.Changed, "#sc-name")
     @on(Input.Changed, "#sc-speedup")
-    @on(Input.Changed, "#sc-outputs")
     @on(Select.Changed, "#sc-world")
     @on(Switch.Changed, "#sc-headless")
     def _scenario_form(self) -> None:
@@ -511,7 +552,6 @@ class HangarApp(App):
             sc.speedup = max(0.1, float(self._main.query_one("#sc-speedup", Input).value or 1))
         except ValueError:
             pass
-        sc.outputs = [o.strip() for o in self._main.query_one("#sc-outputs", Input).value.split(",") if o.strip()]
         sc.headless = self._main.query_one("#sc-headless", Switch).value
         self._scenario_changed(refresh_form=False)
 
@@ -597,12 +637,44 @@ class HangarApp(App):
 
     @on(Button.Pressed, "#camera")
     def _camera(self) -> None:
-        if self.selected:
-            self._vehicle_command("camera", self._toggle_camera(self.selected))
+        rt = self._runtime(self.selected)
+        if not rt or not rt.ports.camera:
+            self.notify(t("This vehicle has no camera. Edit it (e) and switch the camera on."), severity="warning")
+            return
+        self.push_screen(CameraScreen(self.supervisor, rt.name))
 
-    async def _toggle_camera(self, name: str) -> str:
-        opened = await self.supervisor.toggle_camera_view(name)
-        return "viewer opened" if opened else "viewer closed"
+    # --- outputs (Ports tab) ---------------------------------------------------
+
+    @on(Button.Pressed, "#out-add")
+    def _out_add(self) -> None:
+        if not self.scenario.vehicles:
+            self.notify(t("No vehicles yet. Press [b]a[/b] to add one."), severity="warning")
+            return
+
+        def done(result) -> None:
+            if result:
+                self._output_change(self.supervisor.add_output(*result), f"+ {result[0]}")
+
+        self.push_screen(OutputDialog(self.supervisor, [v.name or "" for v in self.scenario.vehicles]), done)
+
+    @on(Button.Pressed, "#out-remove")
+    def _out_remove(self) -> None:
+        table = self._main.query_one("#outputs", DataTable)
+        if not self._output_rows or table.cursor_row < 0:
+            return
+        row = self._output_rows[table.cursor_row]
+        self._output_change(self.supervisor.remove_output(row.template, row.scope), f"− {row.template}")
+
+    @work(group="outputs")
+    async def _output_change(self, coro, label: str) -> None:
+        try:
+            await coro
+        except SupervisorError as e:
+            self.notify(str(e), severity="error", timeout=8)
+            return
+        live = self.supervisor.state == SimState.RUNNING
+        self.notify(f"{label}" + (f"  ({t('applied live')})" if live else ""))
+        self._scenario_changed(refresh_form=False)
 
     @on(Button.Pressed, "#restart")
     def _restart(self) -> None:

@@ -390,6 +390,25 @@ class Supervisor:
             await v.camera_bridge.start()
             self.log(v.name, f"camera -> {device} (OpenCV: cv2.VideoCapture('{device}'))", "event")
 
+    def camera_info(self, name: str) -> dict:
+        """Port, size and ready-to-paste usage for a vehicle's camera stream."""
+        v = self.vehicle(name)
+        if not v.ports.camera:
+            raise SupervisorError(f"{name} has no camera")
+        cam = v.spec.camera
+        own = v.model.camera_size or (1280, 720)
+        explicit = cam.model_fields_set if cam else set()
+        width = cam.width if cam and (not v.model.has_camera or "width" in explicit) else own[0]
+        height = cam.height if cam and (not v.model.has_camera or "height" in explicit) else own[1]
+        fps = cam.fps if cam else 30
+        device = cam.v4l2_device if cam else None
+        return {
+            "port": v.ports.camera, "width": width, "height": height, "fps": fps, "device": device,
+            "streaming": bool(v.camera_topic),
+            "viewer": bool(v.camera_viewer and v.camera_viewer.alive),
+            "usage": camera.usage(v.ports.camera, width, height, device),
+        }
+
     async def toggle_camera_view(self, name: str) -> bool:
         """Open or close a viewer window. Returns True when it is now open."""
         v = self.vehicle(name)
@@ -407,6 +426,62 @@ class Supervisor:
         )
         await v.camera_viewer.start()
         return True
+
+    # --- outputs (Ports tab) ------------------------------------------------
+
+    def _plan_for(self, scenario: Scenario) -> PortPlan:
+        models = {v.name: self.catalog.get(v.model) for v in scenario.vehicles}
+        return PortPlan.build(
+            scenario,
+            gazebo={n: bool(m and m.needs_gazebo) for n, m in models.items()},
+            cameras={v.name: bool(models[v.name]) and _wants_camera(models[v.name], v) for v in scenario.vehicles},
+        )
+
+    def check_output(self, url: str, scope: str) -> list[str]:
+        """Problems adding ``url`` for ``scope`` ("*" or a vehicle) would cause."""
+        trial = self.scenario.model_copy(deep=True)
+        if scope == "*":
+            trial.outputs.append(url)
+        else:
+            next(v for v in trial.vehicles if v.name == scope).outputs.append(url)
+        try:
+            before = set(self._plan_for(self.scenario).conflicts(check_system=False))
+            plan = self._plan_for(trial)
+        except ValueError as e:
+            return [str(e)]
+        problems = [c for c in plan.conflicts(check_system=False) if c not in before]
+        old = {(b.proto, b.port) for b in self._plan_for(self.scenario).bindings()}
+        for b in plan.bindings():
+            if (b.proto, b.port) not in old and port_in_use(b.proto, b.port):
+                problems.append(f"{b.proto}/{b.port} is already in use by another program")
+        return problems
+
+    async def add_output(self, url: str, scope: str) -> None:
+        problems = self.check_output(url, scope)
+        if problems:
+            raise SupervisorError("; ".join(problems))
+        if scope == "*":
+            self.scenario.outputs.append(url)
+        else:
+            next(v for v in self.scenario.vehicles if v.name == scope).outputs.append(url)
+        await self._apply_outputs()
+
+    async def remove_output(self, template: str, scope: str) -> None:
+        holder = self.scenario.outputs if scope == "*" else \
+            next(v for v in self.scenario.vehicles if v.name == scope).outputs
+        if template in holder:
+            holder.remove(template)
+        await self._apply_outputs()
+
+    async def _apply_outputs(self) -> None:
+        """Running links pick up the new outputs at once; no restart needed."""
+        if self.state != SimState.RUNNING:
+            return  # used on the next start
+        plan = self._plan_for(self.scenario)
+        for v, ports in zip(self.vehicles, plan.vehicles):
+            v.ports.outputs = ports.outputs
+            if v.link:
+                await v.link.set_outputs(ports.outputs)
 
     async def restart_vehicle(self, name: str) -> None:
         if self.state != SimState.RUNNING:

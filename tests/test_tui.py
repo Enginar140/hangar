@@ -1,6 +1,6 @@
 """Drives the terminal UI headlessly (no SITL needed)."""
 
-from textual.widgets import DataTable, Input, Select
+from textual.widgets import Button, DataTable, Input, Select
 
 from hangar.scenario import Scenario
 from hangar.tui import HangarApp
@@ -52,10 +52,8 @@ async def test_edit_flow(settings, tmp_path):
         await pilot.press("4")
         await pilot.pause()
         app.query_one("#sc-world", Select).value = "runway"
-        app.query_one("#sc-outputs", Input).value = "udp:127.0.0.1:14550, udp:127.0.0.1:{15000+i}"
         await pilot.pause()
         assert app.scenario.world == "runway"
-        assert app.scenario.outputs[1] == "udp:127.0.0.1:{15000+i}"
 
         # save
         path = tmp_path / "saved.yaml"
@@ -116,3 +114,61 @@ async def test_editor_camera_switch(settings):
         await pilot.pause()
         c = app.scenario.vehicles[0].camera
         assert c.enabled and c.v4l2_device == "/dev/video2"
+        assert (c.width, c.height, c.fps) == (1280, 720, 30) and c.pose is None
+
+
+async def test_editor_camera_quality_and_direction(settings):
+    from textual.widgets import Switch
+
+    app = HangarApp(scenario=Scenario(name="t"), settings=settings)
+    async with app.run_test(size=(140, 50)) as pilot:
+        await pilot.press("a")
+        await pilot.pause()
+        ed = app.screen
+        ed.query_one("#model", Select).value = "testcopter"
+        await pilot.pause()
+        ed.query_one("#camera", Switch).value = True
+        await pilot.pause()
+        ed.query_one("#cam-quality", Select).value = "low"
+        await pilot.pause()
+        assert ed.query_one("#cam-w", Input).value == "640"
+        ed.query_one("#cam-fps", Input).value = "15"
+        ed.query_one("#cam-dir", Select).value = "down"
+        await pilot.pause()
+        ed.query_one("#ok", Button).press()
+        await pilot.pause()
+        c = app.scenario.vehicles[0].camera
+        assert (c.width, c.height, c.fps) == (640, 360, 15)
+        assert c.pose == [0, 0, -0.05, 0, 90, 0]
+
+
+async def test_ports_tab_add_and_remove_output(settings):
+    from hangar.tui.screens import OutputDialog
+
+    sc = Scenario.model_validate({"vehicles": [{"model": "sitl:plane"}, {"model": "sitl:copter"}]})
+    app = HangarApp(scenario=sc, settings=settings)
+    async with app.run_test(size=(140, 50)) as pilot:
+        await pilot.press("3")
+        await pilot.pause()
+        app.query_one("#out-add", Button).press()
+        await pilot.pause()
+        dlg = app.screen
+        assert isinstance(dlg, OutputDialog)
+        # a listening port without {i} would be bound twice: refused
+        dlg.query_one("#kind", Select).value = "udpin"
+        dlg.query_one("#port", Input).value = "14600"
+        await pilot.pause()
+        assert dlg.query_one("#ok", Button).disabled
+        dlg.query_one("#port", Input).value = "{14600+i}"
+        await pilot.pause()
+        assert not dlg.query_one("#ok", Button).disabled
+        dlg.query_one("#ok", Button).press()
+        await pilot.pause(0.5)
+        assert app.scenario.outputs == ["udp:127.0.0.1:14550", "udpin:127.0.0.1:{14600+i}"]
+        table = app.query_one("#outputs", DataTable)
+        assert table.row_count == 4  # 2 vehicles x 2 outputs
+        table.move_cursor(row=1)  # plane's udpin row
+        await pilot.pause()
+        app.query_one("#out-remove", Button).press()
+        await pilot.pause(0.5)
+        assert app.scenario.outputs == ["udp:127.0.0.1:14550"]

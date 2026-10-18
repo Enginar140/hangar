@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -41,6 +42,7 @@ class VehicleModel:
     has_camera: bool = False
     camera_pose: list[float] | None = None  # where an added camera goes (m, deg)
     camera_parent: str | None = None  # link it is fixed to, if not base_link
+    camera_size: tuple[int, int] | None = None  # resolution of the model's own camera
     description: str = ""
 
     @property
@@ -74,6 +76,17 @@ def _guess_type(name: str) -> str | None:
     for vtype, words in _NAME_HINTS:
         if any(w in lower for w in words):
             return vtype
+    return None
+
+
+def _camera_size(sdf_text: str) -> tuple[int, int] | None:
+    """Width/height of the camera sensor that carries the GstCameraPlugin."""
+    for sensor in re.findall(r"<sensor\b.*?</sensor>", sdf_text, re.S):
+        if "GstCameraPlugin" in sensor:
+            w = re.search(r"<width>\s*(\d+)", sensor)
+            h = re.search(r"<height>\s*(\d+)", sensor)
+            if w and h:
+                return int(w.group(1)), int(h.group(1))
     return None
 
 
@@ -149,6 +162,7 @@ class Catalog:
             params=params,
             model_dir=model_dir,
             has_camera="GstCameraPlugin" in text,
+            camera_size=_camera_size(text),
             camera_pose=meta.get("camera_pose"),
             camera_parent=meta.get("camera_parent"),
             description=meta.get("description", ""),

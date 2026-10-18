@@ -90,3 +90,37 @@ async def test_link_routes_and_commands():
         await link.stop()
         gcs_transport.close()
         server.close()
+
+
+async def test_outputs_change_while_running():
+    sitl = FakeSitl(sysid=1)
+    port = free_port()
+    server = await asyncio.start_server(sitl.handle, "127.0.0.1", port)
+    gcs_port = free_port(socket.SOCK_DGRAM)
+    got: list[bytes] = []
+
+    class Gcs(asyncio.DatagramProtocol):
+        def datagram_received(self, data, addr):
+            got.append(data)
+
+    transport, _ = await asyncio.get_running_loop().create_datagram_endpoint(
+        Gcs, local_addr=("127.0.0.1", gcs_port))
+    link = VehicleLink("v", 1, port, [])
+    await link.start()
+    try:
+        assert await link.wait_connected(5)
+        await asyncio.sleep(0.3)
+        assert not got
+        ep = Endpoint("udp", "127.0.0.1", gcs_port)
+        await link.set_outputs([ep])
+        await asyncio.sleep(0.3)
+        assert got, "new output did not receive traffic"
+        await link.set_outputs([])
+        await asyncio.sleep(0.15)
+        got.clear()
+        await asyncio.sleep(0.3)
+        assert not got, "removed output still receives traffic"
+    finally:
+        await link.stop()
+        transport.close()
+        server.close()

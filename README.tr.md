@@ -123,14 +123,49 @@ Ayarların hepsi opsiyoneldir:
 ```
 
 Kendi kamerası olan model onu kullanmaya devam eder. Kapatmak için `camera: false` yaz.
-Arayüzde araç penceresinde bir kamera anahtarı var; Kamera butonu da görüntüleyiciyi açar.
-Yayın portu Portlar sekmesinde görünür (udp 5600 + araç sırası).
+Arayüzde araç penceresinden kalite (düşük/orta/yüksek/özel çözünürlük), FPS,
+görüş açısı ve yön ayarlanır. Video bit hızı ArduPilot'un kamera eklentisinde
+800 kbit/s olarak sabit.
+
+**Kamerayı Python'da kullanmak.** Kamera butonu, o kameranın portuyla
+doldurulmuş hazır kod içeren bir pencere açar. Seçenekler: numpy/OpenCV ile
+Python, GStreamer'lı OpenCV, v4l2 cihazı ve `gst-launch` komutu. Kodu `.py`
+dosyası olarak da kaydedebilirsin. Bağımsız bir örnek:
+[`examples/camera_opencv.py`](examples/camera_opencv.py)
+
+```python
+from camera_opencv import frames            # examples/camera_opencv.py
+for frame in frames(port=5600, width=1280, height=720):
+    ...                                      # frame: BGR numpy dizisi, cv2 ile aynı
+```
+
+Bu yöntem pip'teki `opencv-python` ile de çalışır; o paketin kendi GStreamer
+desteği olmasa bile. UDP portunu aynı anda yalnızca bir program okuyabilir.
+Aynı kamerayı birden fazla program okuyacaksa kameraya bir `v4l2_device` ver
+ve o cihazı `cv2.VideoCapture('/dev/video2')` ile aç.
+
+### Portlar: yer istasyonu ve script bağlamak
+
+Tüm port ayarları **Portlar** sekmesinde. **Çıkış ekle** ve **Çıkışı sil**
+simülasyon çalışırken de kullanılabilir; değişiklik anında uygulanır. Ekleme
+penceresi her araç için çıkacak portu önceden gösterir ve çakışan bir çıkışı
+eklemene izin vermez.
+
+- **QGroundControl / Mission Planner** udp 14550'yi dinler. Varsayılan olarak
+  tüm araçlar bu portu paylaşır; bu programlar her aracı kendi sistem ID'siyle
+  ayrı gösterir.
+- **Tek araçla konuşan script** o aracın kendi script portuna bağlanır:
+  `tcp:127.0.0.1:5762 + 10*i`. O porttan başka araç konuşmaz, araçlar karışmaz.
+  Örnek: [`examples/mavlink_script.py`](examples/mavlink_script.py)
+- **Ek port** (ikinci yer istasyonu, yarışma sunucusu, companion bilgisayar):
+  çıkış ekle. `{i}` her araca ayrı port verir, örn. `udp:127.0.0.1:{14560+i}`.
 
 ### Port düzeni
 
 | | araç 0 | araç 1 | araç *i* |
 |---|---|---|---|
 | MAVLink (SITL serial0) | tcp 5760 | tcp 5770 | 5760 + 10*i* |
+| Script portları (sadece o araç) | tcp 5762, 5763 | tcp 5772, 5773 | 5762 + 10*i*, 5763 + 10*i* |
 | Gazebo ↔ SITL | udp 9002 | udp 9012 | 9002 + 10*i* |
 | Kamera (RTP H.264) | udp 5600 | udp 5601 | 5600 + *i* |
 | MAVLink sistem id | 1 | 2 | *i* + 1 |

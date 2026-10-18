@@ -136,8 +136,42 @@ files stay untouched) and streams H.264 over RTP/UDP. Every key is optional:
 ```
 
 A model that already has a camera keeps it, and `camera: false` switches it off.
-In the UI, the vehicle dialog has a camera switch, and the Camera button opens
-a viewer. The stream port is shown in the Ports tab (udp 5600 + vehicle index).
+In the UI, the vehicle dialog sets the quality (low/medium/high/custom
+resolution), FPS, field of view and direction. The encoder bitrate is fixed at
+800 kbit/s by ArduPilot's camera plugin.
+
+**Using the camera from Python.** The Camera button opens a window with
+ready-to-paste code for that camera's port: Python with numpy/OpenCV, OpenCV's
+GStreamer backend, the v4l2 device, or a `gst-launch` command. It can also save
+the code as a `.py` file. A standalone version is in
+[`examples/camera_opencv.py`](examples/camera_opencv.py):
+
+```python
+from camera_opencv import frames           # examples/camera_opencv.py
+for frame in frames(port=5600, width=1280, height=720):
+    ...                                     # frame: BGR numpy array, like cv2
+```
+
+It works with pip's `opencv-python`, which has no GStreamer support of its own.
+Only one program can read a UDP port at a time. If several programs need the
+same camera, give it a `v4l2_device` and open that device with
+`cv2.VideoCapture('/dev/video2')`.
+
+### Ports: connecting ground stations and scripts
+
+All port settings live in the **Ports** tab. **Add output** and **Remove output**
+work while the simulation runs, and changes apply immediately. The dialog
+previews each vehicle's resulting port and refuses conflicts.
+
+- **QGroundControl / Mission Planner** listen on udp 14550. All vehicles share
+  it by default, which these programs handle: each vehicle shows up under its
+  own system id.
+- **A script for one vehicle** connects to that vehicle's own script port,
+  `tcp:127.0.0.1:5762 + 10*i`. Nothing else talks on that port, so vehicles
+  never mix. See [`examples/mavlink_script.py`](examples/mavlink_script.py):
+  `mavutil.mavlink_connection('tcp:127.0.0.1:5762')`.
+- **Another port** (a second GCS, a competition server, a companion computer):
+  add an output. `{i}` gives every vehicle its own port, e.g. `udp:127.0.0.1:{14560+i}`.
 
 Output kinds: `udp:host:port` sends to a listener (the GCS case),
 `udpin:host:port` listens and replies to whoever talks to it, and
@@ -150,6 +184,7 @@ ArduPilot shifts every port by `10 × instance`, and Hangar follows that:
 | | vehicle 0 | vehicle 1 | vehicle *i* |
 |---|---|---|---|
 | MAVLink (SITL serial0, Hangar connects) | tcp 5760 | tcp 5770 | 5760 + 10*i* |
+| Script ports (this vehicle only) | tcp 5762, 5763 | tcp 5772, 5773 | 5762 + 10*i*, 5763 + 10*i* |
 | Gazebo ↔ SITL (JSON) | udp 9002 | udp 9012 | 9002 + 10*i* |
 | Camera (RTP H.264) | udp 5600 | udp 5601 | 5600 + *i* |
 | MAVLink system id | 1 | 2 | *i* + 1 |

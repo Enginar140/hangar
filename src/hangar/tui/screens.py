@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from rich.markup import escape
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
@@ -18,6 +19,28 @@ from ..i18n import t
 from ..scenario import CameraSpec, VehicleSpec
 
 TYPE_ICONS = {"copter": "✣", "plane": "✈", "rover": "⛟", "boat": "⛴"}
+
+
+QUALITY_SIZES = {"low": (640, 360), "medium": (1280, 720), "high": (1920, 1080)}
+QUALITY_OPTIONS = [
+    (t("Low 640×360"), "low"), (t("Medium 1280×720"), "medium"), (t("High 1920×1080"), "high"),
+    (t("Custom"), "custom"),
+]
+DIRECTION_POSES: dict[str, list[float] | None] = {
+    "forward": None,  # the model's nose position (vehicles.yaml) or the default
+    "down": [0.0, 0.0, -0.05, 0.0, 90.0, 0.0],
+}
+DIRECTION_OPTIONS = [(t("ahead"), "forward"), (t("down"), "down"), (t("as in YAML"), "keep")]
+
+
+def _quality_of(w: int, h: int) -> str:
+    return next((k for k, size in QUALITY_SIZES.items() if size == (w, h)), "custom")
+
+
+def _direction_of(pose: list[float] | None) -> str:
+    if pose is None:
+        return "forward"
+    return "down" if abs(pose[4] - 90) < 1e-6 and not any(pose[:2]) else "keep"
 
 
 class _Dialog(ModalScreen):
@@ -57,16 +80,30 @@ class VehicleEditor(_Dialog):
             yield Input(s.name if s else "", placeholder="auto", id="name")
             yield Label(t("Pose x y z yaw (m, deg)"))
             yield Input(pose_text, id="pose")
-            yield Label(t("Extra outputs (comma separated)"))
-            yield Input(", ".join(s.outputs) if s else "", placeholder="udp:127.0.0.1:{15000+i}", id="outputs")
             yield Label(t("Parameters NAME=VALUE (comma separated)"))
             yield Input(", ".join(f"{k}={v:g}" for k, v in (s.params.items() if s else [])),
                         placeholder="SIM_WIND_SPD=5", id="params")
+            cam = s.camera if s and s.camera else CameraSpec()
             with Horizontal(classes="switch-row"):
                 yield Switch(self._camera_default(), id="camera")
                 yield Label(t("Camera (added to the model if it has none)"))
+            with Horizontal(classes="field-row cam-field"):
+                yield Label(t("Quality"))
+                yield Select(QUALITY_OPTIONS, id="cam-quality", allow_blank=False, compact=True,
+                             value=_quality_of(cam.width, cam.height))
+                yield Input(str(cam.width), id="cam-w", type="integer", compact=True)
+                yield Label("×")
+                yield Input(str(cam.height), id="cam-h", type="integer", compact=True)
+            with Horizontal(classes="field-row cam-field"):
+                yield Label("FPS")
+                yield Input(str(cam.fps), id="cam-fps", type="integer", compact=True)
+                yield Label(t("FOV°"))
+                yield Input(f"{cam.fov:g}", id="cam-fov", type="number", compact=True)
+                yield Label(t("Looks"))
+                yield Select(DIRECTION_OPTIONS, id="cam-dir", allow_blank=False, compact=True,
+                             value=_direction_of(cam.pose))
             yield Label(t("Camera to v4l2 device (optional)"))
-            yield Input(s.camera.v4l2_device or "" if s and s.camera else "", placeholder="/dev/video2", id="v4l2")
+            yield Input(cam.v4l2_device or "", placeholder="/dev/video2", id="v4l2")
             with Horizontal(classes="dialog-buttons"):
                 yield Button(t("OK"), variant="primary", id="ok")
                 yield Button(t("Cancel"), id="cancel")
@@ -77,6 +114,9 @@ class VehicleEditor(_Dialog):
         m = self.catalog.get(self.spec.model) if self.spec else None
         return bool(m and m.has_camera)
 
+    def on_mount(self) -> None:
+        self._sync_camera_fields()
+
     @on(Select.Changed, "#model")
     def _model_changed(self, event: Select.Changed) -> None:
         m = self.catalog.get(str(event.value)) if isinstance(event.value, str) else None
@@ -84,6 +124,41 @@ class VehicleEditor(_Dialog):
         cam.disabled = not (m and m.needs_gazebo)  # built-in physics has nothing to film
         if m and not self.spec:
             cam.value = m.has_camera
+            if m.camera_size:
+                self.query_one("#cam-w", Input).value = str(m.camera_size[0])
+                self.query_one("#cam-h", Input).value = str(m.camera_size[1])
+        self._sync_camera_fields()
+
+    @on(Switch.Changed, "#camera")
+    def _sync_camera_fields(self) -> None:
+        on = self.query_one("#camera", Switch).value and not self.query_one("#camera", Switch).disabled
+        for w in self.query(".cam-field Input, .cam-field Select, #v4l2"):
+            w.disabled = not on
+        m = self._model()
+        if on and m and m.has_camera:  # the model's own camera stays where it is
+            self.query_one("#cam-dir", Select).disabled = True
+
+    @on(Select.Changed, "#cam-quality")
+    def _quality(self, event: Select.Changed) -> None:
+        size = QUALITY_SIZES.get(str(event.value))
+        if size:
+            self.query_one("#cam-w", Input).value = str(size[0])
+            self.query_one("#cam-h", Input).value = str(size[1])
+
+    @on(Input.Changed, "#cam-w")
+    @on(Input.Changed, "#cam-h")
+    def _size_typed(self) -> None:
+        try:
+            q = _quality_of(int(self.query_one("#cam-w", Input).value), int(self.query_one("#cam-h", Input).value))
+        except ValueError:
+            return
+        sel = self.query_one("#cam-quality", Select)
+        if sel.value != q:
+            sel.value = q
+
+    def _model(self):
+        v = self.query_one("#model", Select).value
+        return self.catalog.get(v) if isinstance(v, str) else None
 
     @on(Button.Pressed, "#cancel")
     def _cancel(self) -> None:
@@ -103,7 +178,7 @@ class VehicleEditor(_Dialog):
                 if item.strip():
                     k, v = item.split("=", 1)
                     params[k.strip().upper()] = float(v)
-            outputs = [o.strip() for o in self.query_one("#outputs", Input).value.split(",") if o.strip()]
+            outputs = list(self.spec.outputs) if self.spec else []  # edited in the Ports tab
             device = self.query_one("#v4l2", Input).value.strip() or None
             name = self.query_one("#name", Input).value.strip() or None
             camera = self._camera_spec(str(model), self.query_one("#camera", Switch).value, device)
@@ -122,11 +197,21 @@ class VehicleEditor(_Dialog):
 
 
     def _camera_spec(self, model: str, on: bool, device: str | None) -> CameraSpec | None:
-        """Keep pose/resolution set in the YAML; only the switch and device are edited here."""
         m = self.catalog.get(model)
         base = self.spec.camera if self.spec and self.spec.camera else CameraSpec()
         if on and m and m.needs_gazebo:
-            return base.model_copy(update={"enabled": True, "v4l2_device": device})
+            direction = self.query_one("#cam-dir", Select).value
+            pose = base.pose if direction == "keep" else DIRECTION_POSES.get(str(direction))
+            return CameraSpec.model_validate({
+                **base.model_dump(exclude={"pose"}),
+                "enabled": True,
+                "v4l2_device": device,
+                "width": int(self.query_one("#cam-w", Input).value),
+                "height": int(self.query_one("#cam-h", Input).value),
+                "fps": int(self.query_one("#cam-fps", Input).value),
+                "fov": float(self.query_one("#cam-fov", Input).value),
+                **({"pose": pose} if pose else {}),
+            })
         if m and m.has_camera:
             return base.model_copy(update={"enabled": False})  # switch off the model's own camera
         return None
@@ -242,3 +327,205 @@ class HelpScreen(_Dialog):
     @on(Button.Pressed, "#close")
     def _close(self) -> None:
         self.dismiss(None)
+
+
+OUTPUT_KINDS = [
+    (t("udp — send to a program that listens (QGroundControl, Mission Planner)"), "udp"),
+    (t("udpin — listen; a program sends to us first (pymavlink 'udpout:')"), "udpin"),
+    (t("tcpin — TCP server; programs connect to us (pymavlink 'tcp:')"), "tcpin"),
+]
+
+
+class OutputDialog(_Dialog):
+    """Add a MAVLink output for every vehicle or one of them. Returns (url, scope)."""
+
+    def __init__(self, supervisor, vehicles: list[str]):
+        super().__init__()
+        self.supervisor = supervisor
+        self.vehicles = vehicles
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(classes="dialog compact"):
+            yield Label(t("Add output"), classes="dialog-title")
+            yield Label(t("For"))
+            yield Select([(t("every vehicle"), "*")] + [(n, n) for n in self.vehicles], id="scope",
+                         allow_blank=False, value="*", compact=True)
+            yield Label(t("Kind"))
+            yield Select(OUTPUT_KINDS, id="kind", allow_blank=False, value="udp", compact=True)
+            with Horizontal(classes="field-row"):
+                yield Label(t("Address"))
+                yield Input("127.0.0.1", id="host", compact=True)
+                yield Label(t("Port"))
+                yield Input("{14560+i}", id="port", compact=True)
+            yield Static(t("{i} is the vehicle number (0, 1, 2...), so {14560+i} gives every vehicle its own port."),
+                         classes="hint-text")
+            yield Static(id="preview")
+            with Horizontal(classes="dialog-buttons"):
+                yield Button(t("Add"), variant="primary", id="ok")
+                yield Button(t("Cancel"), id="cancel")
+
+    def on_mount(self) -> None:
+        self._validate()
+
+    def _url(self) -> str:
+        kind = self.query_one("#kind", Select).value
+        host = self.query_one("#host", Input).value.strip() or "127.0.0.1"
+        return f"{kind}:{host}:{self.query_one('#port', Input).value.strip()}"
+
+    def _scope(self) -> str:
+        return str(self.query_one("#scope", Select).value)
+
+    @on(Select.Changed)
+    @on(Input.Changed)
+    def _validate(self) -> bool:
+        from ..ports import Endpoint, PlanError, expand_template
+
+        url, scope = self._url(), self._scope()
+        targets = [(i, n) for i, n in enumerate(self.vehicles) if scope in ("*", n)]
+        lines, ok = [], True
+        try:
+            eps = [(n, Endpoint.parse(expand_template(url, i, i + 1))) for i, n in targets]
+            lines += [f"  {escape(n)} → [b]{escape(str(ep))}[/b]" for n, ep in eps]
+            problems = self.supervisor.check_output(url, scope)
+            lines += [f"[red]✗ {escape(p)}[/]" for p in problems]
+            ok = not problems
+            sends = {str(ep) for _, ep in eps if ep.kind == "udp"}
+            if len(eps) > 1 and len(sends) == 1:
+                shared = t("All these vehicles share one port; fine for QGroundControl and "
+                           "Mission Planner, use {i} for scripts.")
+                lines.append(f"[yellow]! {escape(shared)}[/]")
+        except PlanError as e:
+            lines.append(f"[red]✗ {escape(str(e))}[/]")
+            ok = False
+        self.query_one("#preview", Static).update("\n".join(lines))
+        self.query_one("#ok", Button).disabled = not ok
+        return ok
+
+    @on(Button.Pressed, "#cancel")
+    def _cancel(self) -> None:
+        self.dismiss(None)
+
+    @on(Button.Pressed, "#ok")
+    def _ok(self) -> None:
+        if self._validate():
+            self.dismiss((self._url(), self._scope()))
+
+
+CAMERA_SNIPPETS = [
+    (t("Python (numpy + OpenCV)"), "python"),
+    (t("OpenCV with GStreamer"), "opencv-gstreamer"),
+    (t("v4l2 device (webcam)"), "v4l2"),
+    (t("gst-launch (terminal)"), "gst-launch"),
+]
+
+
+class CameraScreen(_Dialog):
+    """How to use a vehicle's camera, with code filled in for its port."""
+
+    def __init__(self, supervisor, name: str):
+        super().__init__()
+        self.supervisor = supervisor
+        self.vehicle = name
+
+    def compose(self) -> ComposeResult:
+        info = self.supervisor.camera_info(self.vehicle)
+        options = [(label, key) for label, key in CAMERA_SNIPPETS if key in info["usage"]]
+        with Vertical(classes="dialog wide camera-dialog"):
+            yield Label(f"{t('Camera')}: {self.vehicle}", classes="dialog-title")
+            yield Static(id="cam-info")
+            with Horizontal(classes="field-row"):
+                yield Label(t("Use it from"))
+                yield Select(options, id="snippet", allow_blank=False, compact=True,
+                             value="v4l2" if info["device"] else "python")
+            with VerticalScroll(id="snippet-box"):
+                yield Static(id="snippet-code")
+            with Horizontal(classes="dialog-buttons"):
+                yield Button(t("Save as .py"), id="save")
+                yield Button(t("Copy"), id="copy")
+                yield Button(t("Viewer"), id="viewer", variant="primary")
+                yield Button(t("Close"), id="close")
+
+    def on_mount(self) -> None:
+        self._refresh()
+
+    def _refresh(self) -> None:
+        info = self.supervisor.camera_info(self.vehicle)
+        state = "[green]● streaming[/]" if info["streaming"] else "[yellow]● starting[/]"
+        dev = f"   v4l2: [b]{escape(info['device'])}[/b]" if info["device"] else ""
+        note = t("One program at a time can read the UDP port. With a v4l2 device the bridge reads it, "
+                 "so read the device instead; many programs can.") if info["device"] else \
+            t("One program at a time can read the UDP port. Need more? Set a v4l2 device for this camera.")
+        self.query_one("#cam-info", Static).update(
+            f"{state}   udp:[b]{info['port']}[/b]   {info['width']}×{info['height']} @ {info['fps']} fps   "
+            f"H.264 / RTP{dev}\n[dim]{escape(note)}[/]"
+        )
+        key = str(self.query_one("#snippet", Select).value)
+        lang = "python" if key in ("python", "opencv-gstreamer", "v4l2") else "bash"
+        self.query_one("#snippet-code", Static).update(highlight(info["usage"][key], lang))
+        self.query_one("#viewer", Button).label = t("Close viewer") if info["viewer"] else t("Viewer")
+
+    def _code(self) -> str:
+        return self.supervisor.camera_info(self.vehicle)["usage"][str(self.query_one("#snippet", Select).value)]
+
+    @on(Select.Changed, "#snippet")
+    def _snippet(self) -> None:
+        self._refresh()
+
+    @on(Button.Pressed, "#save")
+    def _save(self) -> None:
+        path = Path.cwd() / f"camera_{self.vehicle}.py"
+        try:
+            path.write_text(self.supervisor.camera_info(self.vehicle)["usage"]["python"], encoding="utf-8")
+        except OSError as e:
+            self.notify(str(e), severity="error")
+            return
+        self.notify(f"{t('Saved')}: {path}  →  python3 {path.name}", timeout=8)
+
+    @on(Button.Pressed, "#copy")
+    def _copy(self) -> None:
+        if copy_text(self._code()):
+            self.notify(t("Copied to the clipboard"))
+        else:
+            self.app.copy_to_clipboard(self._code())
+            self.notify(t("Sent to the terminal clipboard; if nothing was copied use 'Save as .py'"), timeout=6)
+
+    @on(Button.Pressed, "#viewer")
+    async def _viewer(self) -> None:
+        try:
+            await self.supervisor.toggle_camera_view(self.vehicle)
+        except Exception as e:  # noqa: BLE001
+            self.notify(str(e), severity="error")
+        self._refresh()
+
+    @on(Button.Pressed, "#close")
+    def _close(self) -> None:
+        self.dismiss(None)
+
+
+def highlight(code: str, lang: str) -> Text:
+    """Syntax colours without a background, so code blends into any panel."""
+    from rich.style import Style
+    from rich.syntax import Syntax
+
+    colored = Syntax(code, lang, theme="monokai").highlight(code)
+    out = Text(colored.plain)
+    for span in colored.spans:
+        st = Style.parse(span.style) if isinstance(span.style, str) else span.style
+        out.stylize(Style(color=st.color, bold=st.bold, italic=st.italic), span.start, span.end)
+    out.rstrip()
+    return out
+
+
+def copy_text(text: str) -> bool:
+    """Put text on the desktop clipboard with whatever tool is installed."""
+    import shutil
+    import subprocess
+
+    for argv in (["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
+        if shutil.which(argv[0]):
+            try:
+                subprocess.run(argv, input=text.encode(), check=True, timeout=3)
+                return True
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return False

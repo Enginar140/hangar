@@ -193,12 +193,39 @@ class PortPlan:
                 "name": v.name,
                 "sysid": str(v.sysid),
                 "mavlink": f"tcp:{v.serial0}",
+                "scripts": f"tcp:{v.serial1}, tcp:{v.serial2}",
                 "fdm": f"udp:{v.fdm}" if v.fdm else "-",
                 "camera": f"udp:{v.camera}" if v.camera else "-",
                 "outputs": ", ".join(str(e) for e in v.outputs) or "-",
             }
             for v in self.vehicles
         ]
+
+
+@dataclass
+class OutputRow:
+    """One output of one vehicle, as shown and edited in the Ports tab."""
+
+    template: str  # as written in the scenario, e.g. udp:127.0.0.1:{15000+i}
+    scope: str  # "*" for every vehicle, else the vehicle name
+    vehicle: str
+    endpoint: Endpoint
+    shared_with: list[str] = field(default_factory=list)  # other vehicles on the same udp target
+
+
+def output_rows(scenario: Scenario) -> list[OutputRow]:
+    rows: list[OutputRow] = []
+    for i, v in enumerate(scenario.vehicles):
+        name = v.name or f"vehicle{i}"
+        for scope, templates in (("*", scenario.outputs), (name, v.outputs)):
+            for tpl in templates:
+                ep = Endpoint.parse(expand_template(tpl, i, i + 1))
+                if not any(r.vehicle == name and r.endpoint == ep for r in rows):
+                    rows.append(OutputRow(tpl, scope, name, ep))
+    for r in rows:
+        if r.endpoint.kind == "udp":
+            r.shared_with = [o.vehicle for o in rows if o.endpoint == r.endpoint and o.vehicle != r.vehicle]
+    return rows
 
 
 def port_in_use(proto: str, port: int, host: str = "0.0.0.0") -> bool:

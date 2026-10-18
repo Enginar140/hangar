@@ -133,6 +133,8 @@ def _make_instance_model(v: WorldVehicle, models_dir: Path, model_paths: Sequenc
         elif "GstCameraPlugin" in name and v.ports.camera:
             _set_child(plugin, "udp_host", "127.0.0.1")
             _set_child(plugin, "udp_port", str(v.ports.camera))
+    if v.ports.camera and v.model.has_camera and v.camera:
+        _tune_own_camera(tree.getroot(), v.camera)
     if not found_fdm:
         raise ValueError(f"{v.model.name}: no ArduPilotPlugin in model.sdf")
     if v.adds_camera:
@@ -187,6 +189,28 @@ def _body_link(model: ET.Element, search: Sequence[Path]) -> str:
     if links:
         return links[0]
     raise ValueError(f"{model.get('name')}: no link to attach a camera to; set camera_parent in hangar.yaml")
+
+
+def _tune_own_camera(root: ET.Element, cam: CameraSpec) -> None:
+    """Apply the resolution/fps/fov the scenario sets explicitly to the model's own camera."""
+    explicit = cam.model_fields_set
+    for sensor in root.iter("sensor"):
+        if not any("GstCameraPlugin" in (p.get("name", "") + p.get("filename", "")) for p in sensor.iter("plugin")):
+            continue
+        camera = sensor.find("camera")
+        if camera is None:
+            continue
+        image = camera.find("image")
+        if image is None:
+            image = ET.SubElement(camera, "image")
+        if "width" in explicit:
+            _set_child(image, "width", str(cam.width))
+        if "height" in explicit:
+            _set_child(image, "height", str(cam.height))
+        if "fov" in explicit:
+            _set_child(camera, "horizontal_fov", f"{math.radians(cam.fov):.6g}")
+        if "fps" in explicit:
+            _set_child(sensor, "update_rate", str(cam.fps))
 
 
 def _add_camera(model: ET.Element, parent: str, pose: list[float], cam: CameraSpec, port: int) -> None:
