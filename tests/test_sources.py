@@ -73,3 +73,52 @@ def test_manifest_is_consistent():
     sitl = manifest["ardupilot_sitl"]
     assert {"bin/arducopter", "bin/arduplane", "bin/ardurover", "autotest/models/plane.parm"} <= set(sitl.files)
     assert all(sitl.ref in url for url in sitl.files.values())  # everything pinned to one version
+
+
+def make_archive(path, members: dict[str, bytes]):
+    import io
+    import tarfile
+
+    with tarfile.open(path, "w:gz") as tar:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+
+
+def archive_source(url: str) -> sources.Source:
+    return sources.Source(id="pack", title="t", url="", ref="0.1.0", license="MIT", purpose="", kind="archive",
+                          dir="pack", files={"archive": url})
+
+
+def test_archive_is_unpacked_without_its_top_folder(tmp_path):
+    tgz = tmp_path / "pack.tar.gz"
+    make_archive(tgz, {"pack-0.1.0/worlds/a/a.sdf": b"<sdf/>", "pack-0.1.0/README.md": b"hi"})
+    sources._archive(archive_source(tgz.as_uri()), progress=lambda *_: None)
+    dest = paths.sources_dir() / "pack"
+    assert (dest / "worlds" / "a" / "a.sdf").read_bytes() == b"<sdf/>"
+    assert (dest / ".hangar-fetched").exists()
+    lock = json.loads((paths.sources_dir() / "lock.json").read_text())
+    assert len(lock["pack"]["sha256"]["archive"]) == 64
+
+
+def test_archive_with_unsafe_paths_is_refused(tmp_path):
+    import tarfile
+
+    tgz = tmp_path / "evil.tar.gz"
+    make_archive(tgz, {"../outside.txt": b"no"})
+    try:
+        sources._archive(archive_source(tgz.as_uri()), progress=lambda *_: None)
+    except tarfile.TarError:
+        pass
+    assert not (paths.sources_dir().parent / "outside.txt").exists()
+    assert not (paths.sources_dir() / "pack").exists()
+
+
+def test_pack_worlds_are_found(settings):
+    from hangar.catalog import Catalog
+
+    world = paths.sources_dir() / "hangar-worlds" / "worlds" / "airfield"
+    world.mkdir(parents=True)
+    (world / "airfield.sdf").write_text('<sdf version="1.9"><world name="airfield"/></sdf>')
+    assert "airfield" in Catalog(settings).worlds

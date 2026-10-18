@@ -92,7 +92,39 @@ def fetch(source: Source) -> str:
         return _download(source)
     if source.kind == "python":
         return _python_env(source)
+    if source.kind == "archive":
+        return _archive(source)
     return _clone(source)
+
+
+def _archive(source: Source, progress=_say) -> str:
+    """A release tarball, unpacked without its top folder; all or nothing."""
+    import tarfile
+
+    url = source.files["archive"]
+    dest = source.path
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".unpack-", dir=dest.parent))
+    try:
+        progress(f"  {url}")
+        archive = staging / "archive.tar.gz"
+        req = urllib.request.Request(url, headers={"User-Agent": "hangar"})
+        with urllib.request.urlopen(req, timeout=120) as r, archive.open("wb") as f:
+            shutil.copyfileobj(r, f)
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        out = staging / "out"
+        with tarfile.open(archive) as tar:
+            tar.extractall(out, filter="data")  # refuses absolute paths and '..'
+        tops = list(out.iterdir())
+        root = tops[0] if len(tops) == 1 and tops[0].is_dir() else out
+        (root / ".hangar-fetched").write_text(source.ref, encoding="utf-8")
+        if dest.exists():
+            shutil.rmtree(dest)
+        os.replace(root, dest)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    _write_lock(source, source.ref, {"sha256": {"archive": digest}})
+    return source.ref
 
 
 PYTHON = "3.12"

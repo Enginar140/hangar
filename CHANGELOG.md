@@ -14,6 +14,9 @@
   terrain at its x, y.
 - Relative files in a world (heightmaps, textures, meshes) keep working after Hangar copies
   the world into the run directory.
+- **Ready-made worlds**: `hangar sources fetch hangar_worlds` installs
+  [hangar-worlds](https://github.com/Enginar140/hangar-worlds) (airfield, mission arena, town);
+  the installer offers it with Gazebo. New `archive` source kind: release tarballs without git.
 
 ## 0.2.0 (2026-10-18)
 

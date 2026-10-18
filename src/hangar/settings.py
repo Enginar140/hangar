@@ -177,8 +177,11 @@ class Settings:
 
     def resolved_world_paths(self) -> list[Path]:
         src = paths.sources_dir()
-        generated = paths.data_dir() / "worlds"  # `hangar world create`, one folder per world
-        made = sorted(p for p in generated.iterdir() if p.is_dir()) if generated.is_dir() else []
+        made: list[Path] = []
+        # one folder per world: `hangar world create` and the hangar-worlds pack
+        for parent in (paths.data_dir() / "worlds", src / "hangar-worlds" / "worlds"):
+            if parent.is_dir():
+                made += sorted(p for p in parent.iterdir() if p.is_dir())
         return _existing(
             [_expand(p) for p in self.world_paths]
             + [src / "SITL_Models" / "Gazebo" / "worlds", src / "ardupilot_gazebo" / "worlds"]

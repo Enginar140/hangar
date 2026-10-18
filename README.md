@@ -272,6 +272,18 @@ camera_pose: [0.5, 0, 0.05, 0, 0, 0]  # optional, where `camera: true` mounts a 
 
 Then add the folder: `hangar config add catalog.model_paths /path/to/models`.
 
+## Ready-made worlds
+
+[hangar-worlds](https://github.com/Enginar140/hangar-worlds) adds an
+**airfield** with a 400 m runway, a 1 km **mission arena** with targets and
+air-defence zones, and a small **town**. Install them with
+`hangar sources fetch hangar_worlds`; the installer also offers them with
+Gazebo.
+
+| airfield | mission_arena | town |
+|---|---|---|
+| ![airfield](https://raw.githubusercontent.com/Enginar140/hangar-worlds/main/docs/images/airfield.jpg) | ![mission arena](https://raw.githubusercontent.com/Enginar140/hangar-worlds/main/docs/images/mission_arena.jpg) | ![town](https://raw.githubusercontent.com/Enginar140/hangar-worlds/main/docs/images/town.jpg) |
+
 ## Worlds from real places
 
 ```bash

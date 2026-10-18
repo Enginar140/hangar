@@ -210,8 +210,8 @@ if [ "$WITH_GAZEBO" = 1 ]; then
         ok "Gazebo installed"
     fi
     ensure_cmds git
-    hangar_cmd sources fetch ardupilot_gazebo sitl_models && hangar_cmd sources build ardupilot_gazebo \
-        || warn "skipped; later: hangar sources fetch ardupilot_gazebo sitl_models && hangar sources build ardupilot_gazebo"
+    hangar_cmd sources fetch ardupilot_gazebo sitl_models hangar_worlds && hangar_cmd sources build ardupilot_gazebo \
+        || warn "skipped; later: hangar sources fetch ardupilot_gazebo sitl_models hangar_worlds && hangar sources build ardupilot_gazebo"
 fi
 
 # --- 5. done -------------------------------------------------------------------------

@@ -95,3 +95,16 @@ hangar_earth:
     imagery ('hangar world create'). Its own environment, about 200 MB (GDAL inside rasterio); no sudo.
   packages:
     deps: ["hangar-earth @ https://github.com/Enginar140/hangar-earth/releases/download/v0.1.0/hangar_earth-0.1.0-py3-none-any.whl"]
+
+hangar_worlds:
+  title: hangar-worlds (airfield, mission arena, town)
+  kind: archive
+  url: https://github.com/Enginar140/hangar-worlds
+  ref: "0.1.0"
+  dir: hangar-worlds
+  license: MIT (worlds); textures from ambientCG, CC0
+  required: false
+  purpose: Ready-made Gazebo worlds for ArduPilot - a grass airfield with a 400 m runway, a 1 km
+    mission arena with targets and air-defence zones, and a small town. About 1 MB.
+  files:
+    archive: https://github.com/Enginar140/hangar-worlds/releases/download/v0.1.0/hangar-worlds-0.1.0.tar.gz

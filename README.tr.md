@@ -262,6 +262,18 @@ camera_pose: [0.5, 0, 0.05, 0, 0, 0]   # opsiyonel: `camera: true` kamerayı bur
 
 Sonra model klasörünü ekle: `hangar config add catalog.model_paths /yol/models`.
 
+## Hazır dünyalar
+
+[hangar-worlds](https://github.com/Enginar140/hangar-worlds) üç dünya ekler:
+400 m pistli bir **havaalanı**, hedefleri ve hava savunma bölgeleri olan 1 km'lik
+bir **görev alanı** ve küçük bir **kasaba**. Kurmak için:
+`hangar sources fetch hangar_worlds`. Kurulum script'i de Gazebo ile
+birlikte bu paketi önerir.
+
+| airfield | mission_arena | town |
+|---|---|---|
+| ![airfield](https://raw.githubusercontent.com/Enginar140/hangar-worlds/main/docs/images/airfield.jpg) | ![mission arena](https://raw.githubusercontent.com/Enginar140/hangar-worlds/main/docs/images/mission_arena.jpg) | ![town](https://raw.githubusercontent.com/Enginar140/hangar-worlds/main/docs/images/town.jpg) |
+
 ## Gerçek yerlerden dünyalar
 
 ```bash
