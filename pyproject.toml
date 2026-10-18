@@ -5,7 +5,7 @@ description = "Multi-vehicle ArduPilot SITL + Gazebo launcher with a terminal UI
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-authors = [{ name = "Hangar contributors" }]
+authors = [{ name = "Enginar140" }]
 keywords = ["ardupilot", "sitl", "gazebo", "mavlink", "drone", "simulation", "tui"]
 classifiers = [
     "Environment :: Console",
