@@ -59,7 +59,7 @@ def parse_sdf(path: Path) -> ET.ElementTree:
 
 
 def build_world(world_sdf: Path, vehicles: list[WorldVehicle], out_dir: Path,
-                ardupilot_models: set[str], model_paths: Sequence[Path] = ()) -> Path:
+                ardupilot_models: set[str], model_paths: Sequence[Path] = (), home=None) -> Path:
     models_dir = out_dir / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
 
@@ -69,6 +69,8 @@ def build_world(world_sdf: Path, vehicles: list[WorldVehicle], out_dir: Path,
         raise ValueError(f"{world_sdf} has no <world> element")
 
     _remove_vehicle_includes(world, ardupilot_models)
+    if home is not None:
+        _set_location(world, home)
     if any(v.ports.has_camera for v in vehicles):
         _ensure_sensors_system(world)
 
@@ -84,6 +86,20 @@ def build_world(world_sdf: Path, vehicles: list[WorldVehicle], out_dir: Path,
     ET.indent(tree)
     tree.write(out, encoding="utf-8", xml_declaration=True)
     return out
+
+
+def _set_location(world: ET.Element, home) -> None:
+    """Give Gazebo the same place on Earth ArduPilot uses (NavSat sensors, GIS plugins)."""
+    sc = world.find("spherical_coordinates")
+    if sc is None:
+        sc = ET.SubElement(world, "spherical_coordinates")
+    _set_child(sc, "surface_model", "EARTH_WGS84")
+    _set_child(sc, "world_frame_orientation", "ENU")
+    _set_child(sc, "latitude_deg", f"{home.lat:.8f}")
+    _set_child(sc, "longitude_deg", f"{home.lon:.8f}")
+    _set_child(sc, "elevation", f"{home.alt:g}")
+    if sc.find("heading_deg") is None:
+        _set_child(sc, "heading_deg", "0")
 
 
 def _remove_vehicle_includes(world: ET.Element, ardupilot_models: set[str]) -> None:

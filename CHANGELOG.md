@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Vehicles start where the Gazebo world is: a world's `<spherical_coordinates>` becomes the
+  SITL home unless the scenario sets `home`, and a world without one gets the scenario's,
+  so QGroundControl and MAVProxy show the vehicles in the right place. `hangar worlds`
+  lists each world's location.
+
 ## 0.2.0 (2026-10-18)
 
 ### Shared map (MAVProxy)

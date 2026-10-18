@@ -242,9 +242,10 @@ def cmd_worlds(args, settings: Settings) -> int:
     from .catalog import Catalog
 
     cat = Catalog(settings)
-    table = Table("World", "File", header_style="bold")
+    table = Table("World", "Location", "File", header_style="bold")
     for name, w in sorted(cat.worlds.items()):
-        table.add_row(name, str(w.path))
+        loc = f"{w.location[0]:.5f}, {w.location[1]:.5f}  {w.location[2]:g} m" if w.location else "—"
+        table.add_row(name, loc, str(w.path))
     console.print(table if cat.worlds else "no worlds found — `hangar sources fetch sitl_models`")
     return 0
 

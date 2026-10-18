@@ -26,7 +26,7 @@ from .catalog import Catalog, VehicleModel
 from .mavlink import VehicleLink
 from .ports import Endpoint, PortPlan, VehiclePorts, port_in_use
 from .process import ManagedProcess, ProcState
-from .scenario import CameraSpec, Scenario, VehicleSpec
+from .scenario import CameraSpec, Home, Scenario, VehicleSpec
 from .settings import Settings
 from .world import WorldVehicle, build_world
 
@@ -327,8 +327,12 @@ class Supervisor:
         ardupilot_models = {n for n, m in self.catalog.vehicles.items() if m.needs_gazebo}
         world_file = await asyncio.to_thread(
             build_world, world.path, gz_vehicles, self.world_dir(), ardupilot_models,
-            self.settings.resolved_model_paths(),
+            self.settings.resolved_model_paths(), self.home(),
         )
+        h = self.home()
+        source = "scenario" if "home" in self.scenario.model_fields_set else \
+            "world" if world.location else "default"
+        self.log("hangar", f"home {h.lat:.6f}, {h.lon:.6f}, {h.alt:g} m ({source})", "event")
         for v in gz_vehicles:
             if v.adds_camera:
                 self.log(v.instance_name, "camera added to the model", "event")
@@ -363,6 +367,16 @@ class Supervisor:
             self.log("gazebo", "Gazebo closed: Gazebo vehicles have no physics now; "
                      "stop and start the simulation again", "error")
 
+    def home(self) -> Home:
+        """Where the vehicles start: the scenario's home if it sets one, else the
+        Gazebo world's own location, so maps show the vehicles where the world is."""
+        sc = self.scenario
+        if "home" not in sc.model_fields_set and self.uses_gazebo and sc.world in self.catalog.worlds:
+            loc = self.catalog.worlds[sc.world].location
+            if loc:
+                return sc.home.model_copy(update={"lat": loc[0], "lon": loc[1], "alt": loc[2]})
+        return sc.home
+
     def _sitl_argv(self, v: VehicleRuntime) -> list[str]:
         m = v.model
         exe = self.catalog.binary_path(m)
@@ -374,7 +388,7 @@ class Supervisor:
         )
         params.append(str(overrides))
 
-        home = self.scenario.home
+        home = self.home()
         if not m.needs_gazebo:  # built-in physics: spread vehicles out by their pose
             x, y, yaw = v.spec.pose[0], v.spec.pose[1], v.spec.pose[5]
             home = home.offset(north_m=y, east_m=x)

@@ -58,6 +58,23 @@ class VehicleModel:
 class World:
     name: str
     path: Path
+    location: tuple[float, float, float] | None = None  # lat, lon, elevation from <spherical_coordinates>
+
+
+def world_location(sdf_text: str) -> tuple[float, float, float] | None:
+    """Where on Earth a world is, if it says so."""
+    block = re.search(r"<spherical_coordinates>(.*?)</spherical_coordinates>", sdf_text, re.S)
+    if not block:
+        return None
+
+    def num(tag: str) -> float | None:
+        m = re.search(rf"<{tag}>\s*([-+0-9.eE]+)\s*</{tag}>", block.group(1))
+        return float(m.group(1)) if m else None
+
+    lat, lon = num("latitude_deg"), num("longitude_deg")
+    if lat is None or lon is None:
+        return None
+    return lat, lon, num("elevation") or 0.0
 
 
 @dataclass
@@ -121,7 +138,12 @@ class Catalog:
                     self.vehicles[model.name] = model
         for root in self.settings.resolved_world_paths():
             for sdf in sorted(root.glob("*.sdf")):
-                self.worlds.setdefault(sdf.stem, World(sdf.stem, sdf))
+                if sdf.stem not in self.worlds:
+                    try:
+                        loc = world_location(sdf.read_text(encoding="utf-8", errors="replace"))
+                    except OSError:
+                        loc = None
+                    self.worlds[sdf.stem] = World(sdf.stem, sdf, loc)
 
     def _load_gazebo_model(self, model_dir: Path) -> VehicleModel | None:
         sdf = model_dir / "model.sdf"

@@ -198,3 +198,32 @@ def test_direct_needs_exactly_one_output():
 
     with pytest.raises(ValidationError, match="exactly one"):
         Scenario.model_validate({"vehicles": [{"model": "a", "camera": {"stream": "direct"}}]})
+
+
+def test_home_follows_the_world_unless_the_scenario_sets_it(settings, library):
+    from hangar.supervisor import Supervisor
+
+    world = library / "worlds" / "runway.sdf"
+    world.write_text(world.read_text().replace(
+        '<world name="runway">',
+        '<world name="runway"><spherical_coordinates><latitude_deg>39.9208</latitude_deg>'
+        '<longitude_deg>32.8541</longitude_deg><elevation>938</elevation></spherical_coordinates>'))
+    cat = Catalog(settings)
+    assert cat.worlds["runway"].location == (39.9208, 32.8541, 938.0)
+
+    sc = Scenario.model_validate({"world": "runway", "vehicles": [{"model": "testplane"}]})
+    h = Supervisor(sc, settings, cat).home()
+    assert (h.lat, h.lon, h.alt) == (39.9208, 32.8541, 938.0)
+
+    own = Scenario.model_validate({"world": "runway", "home": {"lat": 41.0, "lon": 29.0, "alt": 50},
+                                   "vehicles": [{"model": "testplane"}]})
+    assert Supervisor(own, settings, cat).home().lat == 41.0  # an explicit home wins
+
+
+def test_world_without_location_gets_the_home(settings, tmp_path):
+    from hangar.scenario import Home
+
+    cat = Catalog(settings)
+    out = build_world(cat.worlds["runway"].path, [], tmp_path / "run", set(), (), Home(lat=40.5, lon=30.5, alt=100))
+    sc = ET.parse(out).getroot().find("world/spherical_coordinates")
+    assert float(sc.findtext("latitude_deg")) == 40.5 and sc.findtext("surface_model") == "EARTH_WGS84"
