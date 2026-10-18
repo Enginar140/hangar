@@ -8,11 +8,20 @@ Works on Windows, Linux and macOS. Prints what it finds at every step.
 
 import os
 import socket
+import subprocess
 import sys
 import tempfile
 import time
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5600
+
+# FFmpeg refuses RTP unless it is whitelisted. On Windows OpenCV's FFmpeg DLL only sees
+# environment variables that existed when the process started, so setting it from
+# Python is too late there: restart this script with the variable already set.
+FFMPEG_OPTIONS = "protocol_whitelist;file,rtp,udp"
+if os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS") != FFMPEG_OPTIONS:
+    env = {**os.environ, "OPENCV_FFMPEG_CAPTURE_OPTIONS": FFMPEG_OPTIONS}
+    sys.exit(subprocess.call([sys.executable, *sys.argv], env=env))
 
 # --- 1. are packets arriving at all? (no OpenCV involved) -------------------
 print(f"[1/3] Listening on UDP {PORT} for 5 seconds...")
@@ -53,7 +62,6 @@ with open(sdp, "w") as f:
             f"m=video {PORT} RTP/AVP 96\na=rtpmap:96 H264/90000\n")
 print(f"[2/3] Stream description written to {sdp}")
 
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "protocol_whitelist;file,rtp,udp"  # before importing cv2
 try:
     import cv2
 except ImportError:
