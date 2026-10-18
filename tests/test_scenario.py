@@ -63,3 +63,23 @@ def test_log_file_written_for_a_run(settings, tmp_path):
     text = (sup.run_dir / "logs" / "hangar.log").read_text()
     assert "before the run" in text and "ERROR    plane" in text
     assert (paths.runs_dir() / "latest").resolve() == sup.run_dir.resolve()
+
+
+def test_vehicles_without_pose_are_spread_out():
+    sc = Scenario.model_validate({"vehicles": [
+        {"model": "a", "name": "one", "pose": [0, 5, 0.3]},
+        {"model": "b", "name": "two"},
+        {"model": "c", "name": "three"},
+    ]})
+    poses = sc.placed_poses()
+    assert poses[0][:2] == [0, 5]  # given poses stay
+    assert poses[1][:2] == [0, -15] and poses[2][:2] == [0, -30]  # (0, 0) is too close to "one"
+    xy = [tuple(p[:2]) for p in poses]
+    assert len(set(xy)) == 3
+
+
+def test_a_given_default_pose_survives_saving(tmp_path):
+    sc = Scenario.model_validate({"vehicles": [{"model": "a", "pose": [0, 0, 0.3]}, {"model": "b"}]})
+    sc.save(tmp_path / "s.yaml")
+    again = Scenario.load(tmp_path / "s.yaml")
+    assert again.vehicles[0].placed and not again.vehicles[1].placed

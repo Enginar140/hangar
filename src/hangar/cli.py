@@ -125,8 +125,9 @@ def _print_status(sup) -> None:
             continue
         alt = "—" if tel.alt_rel is None else f"{tel.alt_rel:.1f}m"
         gs = "—" if tel.groundspeed is None else f"{tel.groundspeed:.1f}m/s"
+        speed = "" if tel.sim_speed is None else f"  sim ×{tel.sim_speed:.2f}"
         console.print(f"[dim]{v.name:>16} {v.status:8} {tel.mode:10} "
-                      f"{'ARMED' if tel.armed else 'disarmed':9} {alt:>8} {gs:>9} {tel.gps_text}[/]",
+                      f"{'ARMED' if tel.armed else 'disarmed':9} {alt:>8} {gs:>9} {tel.gps_text}{speed}[/]",
                       highlight=False)
 
 
@@ -220,6 +221,8 @@ def cmd_world(args, settings: Settings) -> int:
             argv += [f"--{flag.replace('_', '-')}", str(value)]
     if not args.buildings:
         argv.append("--no-buildings")
+    elif not args.building_collision:
+        argv += ["--building-collision", "none"]
     import subprocess
 
     code = subprocess.call(argv)
@@ -447,6 +450,8 @@ def build_parser() -> argparse.ArgumentParser:
     wc.add_argument("--texture", type=int, choices=(1024, 2048, 4096, 8192), help="texture size in pixels")
     wc.add_argument("--resolution", type=int, choices=(257, 513, 1025, 2049, 4097), help="heightmap samples per edge")
     wc.add_argument("--no-buildings", dest="buildings", action="store_false", help="leave out OpenStreetMap buildings")
+    wc.add_argument("--no-building-collision", dest="building_collision", action="store_false",
+                    help="buildings are visual only: vehicles pass through, the simulation runs faster")
     wc.add_argument("--dem", metavar="FILE.tif", help="your own elevation GeoTIFF (any CRS) where it covers")
     wc.add_argument("--imagery", metavar="FILE.tif", help="your own orthophoto GeoTIFF (any CRS) where it covers")
     wc.add_argument("--imagery-url", metavar="URL", help="XYZ tiles you are allowed to use, {z}/{x}/{y}")

@@ -121,6 +121,11 @@ class VehicleSpec(BaseModel):
     def pose_sdf(self) -> str:
         return " ".join(f"{x:g}" for x in self.pose)
 
+    @property
+    def placed(self) -> bool:
+        """True when the scenario gives this vehicle a pose; otherwise Hangar picks one."""
+        return "pose" in self.model_fields_set
+
 
 class Scenario(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -137,6 +142,26 @@ class Scenario(BaseModel):
     def _names(self) -> Scenario:
         self.assign_names()
         return self
+
+    def placed_poses(self, spacing: float = 15.0) -> list[list[float]]:
+        """Every vehicle's pose. Vehicles without one are lined up along -y, `spacing`
+        apart and clear of the placed ones, instead of all starting on the same spot."""
+        taken = [v.pose for v in self.vehicles if v.placed]
+        out: list[list[float]] = []
+        slot = 0
+        for v in self.vehicles:
+            if v.placed:
+                out.append(list(v.pose))
+                continue
+            while True:
+                x, y = 0.0, -slot * spacing
+                slot += 1
+                if all((p[0] - x) ** 2 + (p[1] - y) ** 2 >= (spacing * 0.6) ** 2 for p in taken):
+                    break
+            pose = [x, y, v.pose[2], v.pose[3], v.pose[4], v.pose[5]]
+            taken.append(pose)
+            out.append(pose)
+        return out
 
     def assign_names(self) -> None:
         """Give every vehicle a unique, filesystem-safe name."""
@@ -160,7 +185,8 @@ class Scenario(BaseModel):
         data = self.model_dump(exclude_defaults=True, mode="json")
         data.setdefault("name", self.name)
         data["vehicles"] = [
-            {"model": v.model, **v.model_dump(exclude_defaults=True, mode="json")}
+            {"model": v.model, **v.model_dump(exclude_defaults=True, mode="json"),
+             **({"pose": list(v.pose)} if v.placed else {})}  # a given pose stays given, even at 0 0 0.3
             for v in self.vehicles
         ]
         return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)

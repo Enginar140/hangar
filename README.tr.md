@@ -83,6 +83,16 @@ hangar doctor                  # neyin kurulu olduğunu, neyin eksik olduğunu v
 hangar logs                    # son çalıştırmanın logu (-f canlı izle, -w sadece uyarılar, --list çalıştırmalar)
 ```
 
+### Araçlar geç hazır oluyorsa
+
+ArduPilot'un arm olabilmesi için birkaç saniyelik *simülasyon* zamanı gerekir
+(EKF, GPS kilidi). Durum çubuğu **simülasyon hızını** gösterir (×1 = gerçek
+zaman). ×0.05'te 20 saniyelik ısınma yaklaşık 7 dakika sürer. Hangar başlamadan
+önce bilinen sebepleri uyarır: tümleşik GPU'da çizim (`headless: true` kullan),
+büyük ya da yüksek FPS'li kameralar (her kare CPU'da çizilip H.264'e çevrilir;
+1280x720, 30 fps çoğu zaman yeter) ve binlerce katı binası olan dünyalar.
+Hız ×0.5'in altında kalırsa Hangar bu sebepleri sayan bir uyarı yazar.
+
 ### Loglar
 
 Her çalıştırma, arayüzde görünen her şeyi tek bir dosyaya yazar:
@@ -132,6 +142,10 @@ vehicles:
     params: {SIM_WIND_SPD: 3}
     outputs: ["tcpin:0.0.0.0:{6000+i}"]   # örn. companion bilgisayar buraya bağlanır
 ```
+
+`pose` verilmeyen araçlar otomatik yerleştirilir: 15 m arayla, `pose`'u olan
+araçlardan uzakta bir sıraya dizilirler. Böylece iki araç asla aynı noktada
+başlamaz.
 
 ### Kameralar
 
@@ -290,7 +304,8 @@ MAVProxy haritası gerçek yeri gösterir. Araçlar `pose` konumunda yere konur;
 yani `z` arazinin üstündeki yüksekliktir.
 
 OpenStreetMap **binaları** da gelir ve fizikte katıdır; istemezsen
-`--no-buildings` ile kapatabilirsin. Daha keskin bir dünya için kendi verini
+`--no-buildings` ile kapatabilirsin. `--no-building-collision` binaları sadece
+görüntü yapar (büyük şehirlerde fizik hızlanır, araçlar içinden geçer). Daha keskin bir dünya için kendi verini
 verebilirsin: `--dem arazi.tif` ve `--imagery ortofoto.tif` (herhangi bir
 koordinat sistemi, örneğin bir drone haritalamasından) ya da kullanım hakkın
 olan bir karo servisi için `--imagery-url`. Senaryo sekmesindeki pencerede de

@@ -87,7 +87,7 @@ hangar_earth:
   title: hangar-earth (Gazebo worlds from real places)
   kind: python
   url: https://github.com/Enginar140/hangar-earth
-  ref: "0.2.0"
+  ref: "0.3.0"
   dir: tools/hangar-earth
   license: MIT (the generator); the terrain and imagery it downloads carry their own terms, written to each world's ATTRIBUTION.txt
   required: false
@@ -95,7 +95,7 @@ hangar_earth:
     imagery and OpenStreetMap buildings ('hangar world create'). Its own environment, about 200 MB
     (GDAL inside rasterio); no sudo.
   packages:
-    deps: ["hangar-earth @ https://github.com/Enginar140/hangar-earth/releases/download/v0.2.0/hangar_earth-0.2.0-py3-none-any.whl"]
+    deps: ["hangar-earth @ https://github.com/Enginar140/hangar-earth/releases/download/v0.3.0/hangar_earth-0.3.0-py3-none-any.whl"]
 
 hangar_worlds:
   title: hangar-worlds (airfield, mission arena, town)

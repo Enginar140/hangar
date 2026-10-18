@@ -88,6 +88,16 @@ hangar doctor                  # what is installed, what is missing, how to fix 
 hangar logs                    # log of the latest run   (-f follow, -w warnings only, --list runs)
 ```
 
+### When vehicles take long to become ready
+
+ArduPilot needs some seconds of *simulated* time (EKF, GPS lock) before it
+can arm. The status bar shows the **sim speed** (×1 = real time). At ×0.05 a
+20 s warm-up takes about 7 minutes. Before starting, Hangar warns about the
+usual causes: rendering on an integrated GPU (use `headless: true`), big or
+fast cameras (each frame is rendered and H.264-encoded on the CPU; 1280x720 at
+30 fps is usually enough) and worlds with thousands of colliding buildings.
+If a run stays below ×0.5, Hangar logs a warning naming these causes.
+
 ### Logs
 
 Every run writes everything the UI shows (Hangar's events and every vehicle's
@@ -137,6 +147,10 @@ vehicles:
     params: {SIM_WIND_SPD: 3}
     outputs: ["tcpin:0.0.0.0:{6000+i}"]
 ```
+
+A vehicle without a `pose` is placed automatically: such vehicles are lined
+up 15 m apart, clear of the ones that have a pose, so two vehicles never start
+on the same spot.
 
 ### Cameras
 
@@ -300,7 +314,8 @@ MAVProxy map all show the real place. Each vehicle is placed on the ground at
 its `pose`, so `z` is the height above the terrain.
 
 OpenStreetMap **buildings** are included and collide. Use `--no-buildings` to
-leave them out. For sharper worlds, give your own data:
+leave them out, or `--no-building-collision` to keep them visual only (faster
+physics in big cities; vehicles pass through them). For sharper worlds, give your own data:
 `--dem survey_dsm.tif` and `--imagery orthophoto.tif` (any coordinate system,
 for example from a drone survey), or `--imagery-url` for a tile service you
 are allowed to use. The Scenario-tab dialog has the buildings switch and the

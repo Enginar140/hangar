@@ -73,8 +73,8 @@ class VehicleEditor(_Dialog):
                 ("  📷" if m.has_camera else "", ""),
             )
             options.append((label, name))
-        pose = s.pose if s else [0, 0, 0.3, 0, 0, 0]
-        pose_text = " ".join(f"{v:g}" for v in (pose[0], pose[1], pose[2], pose[5]))
+        pose_text = " ".join(f"{v:g}" for v in (s.pose[0], s.pose[1], s.pose[2], s.pose[5])) \
+            if s and s.placed else ""
         with VerticalScroll(classes="dialog compact"):
             yield Label(t("Edit vehicle") if s else t("Add vehicle"), classes="dialog-title")
             yield Label(t("Model"))
@@ -83,7 +83,7 @@ class VehicleEditor(_Dialog):
             yield Label(t("Name"))
             yield Input(s.name if s else "", placeholder="auto", id="name")
             yield Label(t("Pose x y z yaw (m, deg)"))
-            yield Input(pose_text, id="pose")
+            yield Input(pose_text, placeholder=t("auto: lined up 15 m apart"), id="pose")
             yield Label(t("Parameters NAME=VALUE (comma separated)"))
             yield Input(", ".join(f"{k}={v:g}" for k, v in (s.params.items() if s else [])),
                         placeholder="SIM_WIND_SPD=5", id="params")
@@ -195,7 +195,7 @@ class VehicleEditor(_Dialog):
             spec = VehicleSpec(
                 model=str(model),
                 name=name,
-                pose=pose or [0, 0, 0.3],
+                **({"pose": pose} if pose else {}),
                 params=params,
                 outputs=outputs,
                 camera=camera,
@@ -647,6 +647,9 @@ class WorldCreateDialog(_Dialog):
             with Horizontal(classes="switch-row"):
                 yield Switch(True, id="buildings")
                 yield Label(t("OpenStreetMap buildings"))
+            with Horizontal(classes="switch-row"):
+                yield Switch(True, id="solid")
+                yield Label(t("Buildings are solid (off: visual only, faster)"))
             yield Label(t("Your own elevation GeoTIFF (optional, sharper terrain)"))
             yield Input(placeholder="~/survey/dsm.tif", id="dem")
             yield Label(t("Your own orthophoto GeoTIFF (optional, sharper ground)"))
@@ -670,7 +673,8 @@ class WorldCreateDialog(_Dialog):
         default = f"place_{lat:.3f}_{lon:.3f}".replace(".", "_").replace("-", "m")
         name = self.query_one("#name", Input).value.strip() or default
         values = {"lat": lat, "lon": lon, "size": int(self.query_one("#size", Select).value), "name": name,
-                  "buildings": self.query_one("#buildings", Switch).value}
+                  "buildings": self.query_one("#buildings", Switch).value,
+                  "solid": self.query_one("#solid", Switch).value}
         for key in ("dem", "imagery"):
             path = self.query_one(f"#{key}", Input).value.strip()
             if path:

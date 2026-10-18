@@ -270,6 +270,10 @@ class HangarApp(App):
         if sup.started_at:
             up = int(time.time() - sup.started_at)
             parts.append(f"{t('Uptime')} {up // 3600:02d}:{up % 3600 // 60:02d}:{up % 60:02d}")
+            speed = sup.sim_speed()
+            if speed is not None:
+                style = "green" if speed >= 0.9 else "yellow" if speed >= 0.5 else "bold red"
+                parts.append(f"{t('Sim speed')} [{style}]×{speed:.2f}[/]")
         if self.scenario_path:
             parts.append(f"[dim]{escape(str(self.scenario_path))}[/]")
         self._main.query_one("#status", Static).update("   ".join(parts))
@@ -355,7 +359,8 @@ class HangarApp(App):
             grid.add_row(t("Heading"), _fmt(tel.heading, "°", 0), t("Throttle"),
                          "—" if tel.throttle is None else f"{tel.throttle}%")
             grid.add_row(t("Battery"), bat, t("GPS"), tel.gps_text)
-            grid.add_row(t("Ready"), ready_text, "", "")
+            speed = "—" if tel.sim_speed is None else f"×{tel.sim_speed:.2f} ({t('real time')} = ×1)"
+            grid.add_row(t("Ready"), ready_text, t("Sim speed"), speed)
             pos = "—" if tel.lat is None else f"{tel.lat:.6f}, {tel.lon:.6f}"
             grid.add_row(t("Position"), pos, "", "")
         if rt:
@@ -853,6 +858,8 @@ class HangarApp(App):
                 "--size", str(params["size"]), "--name", name, "--out", str(out)]
         if not params.get("buildings", True):
             argv.append("--no-buildings")
+        elif not params.get("solid", True):
+            argv += ["--building-collision", "none"]
         for key in ("dem", "imagery"):
             if params.get(key):
                 argv += [f"--{key}", params[key]]

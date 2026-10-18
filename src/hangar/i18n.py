@@ -176,8 +176,12 @@ TR.update({
         "{i} her araca kendi portunu verir. Değişiklik simülasyon çalışırken de anında uygulanır."
     ),
     "Quality": "Kalite",
+    "Sim speed": "Sim hızı",
+    "real time": "gerçek zaman",
+    "auto: lined up 15 m apart": "otomatik: 15 m arayla dizilir",
     "Create a world from a real place": "Gerçek bir yerden dünya oluştur",
     "OpenStreetMap buildings": "OpenStreetMap binaları",
+    "Buildings are solid (off: visual only, faster)": "Binalar katı (kapalı: sadece görüntü, daha hızlı)",
     "Your own elevation GeoTIFF (optional, sharper terrain)":
         "Kendi yükseklik GeoTIFF'in (opsiyonel, daha keskin arazi)",
     "Your own orthophoto GeoTIFF (optional, sharper ground)":

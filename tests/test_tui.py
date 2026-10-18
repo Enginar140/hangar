@@ -245,7 +245,8 @@ async def test_world_create_dialog_validates(settings):
         assert not ok.disabled
         ok.press()
         await pilot.pause()
-    assert results == [{"lat": 39.88, "lon": 33.23, "size": 3000, "name": "ankara_hills", "buildings": True}]
+    assert results == [{"lat": 39.88, "lon": 33.23, "size": 3000, "name": "ankara_hills", "buildings": True,
+                       "solid": True}]
 
 
 async def test_world_create_dialog_checks_own_files(settings, tmp_path):

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Vehicles without a pose are placed automatically**, 15 m apart and clear of placed ones,
+  instead of all starting at the origin (where they fell over each other and never became
+  ready). Leave the pose field empty in the vehicle editor for this.
+- **Sim speed indicator**: the status bar, the vehicle panel and `hangar up` show how fast the
+  simulation runs compared to real time, measured from each autopilot's clock. Below ×0.5 for
+  15 s, a warning names the likely causes.
+- **Performance warnings before start**: integrated-GPU-only machines (suggests `headless: true`),
+  heavy cameras (resolution × fps), many cameras together, and worlds with thousands of
+  colliding buildings.
+- Worlds from real places use hangar-earth 0.3.0: `hangar world create --no-building-collision`
+  and a "buildings are solid" switch in the dialog make buildings visual only.
+
 ## 0.3.1 (2026-10-18)
 
 - Worlds from real places use hangar-earth 0.2.0: **OpenStreetMap buildings** (one colliding mesh)

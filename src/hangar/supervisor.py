@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from . import camera, paths
+from . import camera, paths, perf
 from .catalog import Catalog, VehicleModel
 from .mavlink import VehicleLink
 from .ports import Endpoint, PortPlan, VehiclePorts, port_in_use
@@ -74,6 +74,7 @@ class VehicleRuntime:
     run_dir: Path
     process: ManagedProcess | None = None
     link: VehicleLink | None = None
+    pose: list[float] = field(default_factory=list)  # where it starts, see Scenario.placed_poses
     camera_relay: camera.VideoRelay | None = None
     camera_bridge: ManagedProcess | None = None
     camera_viewer: ManagedProcess | None = None
@@ -226,6 +227,9 @@ class Supervisor:
             if not any((p / "libArduPilotPlugin.so").exists() for p in self.settings.resolved_plugin_paths()):
                 warnings.append("libArduPilotPlugin.so not found in gazebo.plugin_paths")
 
+        if any(m.needs_gazebo for m in models.values()):
+            warnings += self._performance_warnings(models)
+
         plan = None
         try:
             plan = PortPlan.build(
@@ -237,6 +241,41 @@ class Supervisor:
         except ValueError as e:
             errors.append(str(e))
         return Preflight(plan, errors, warnings)
+
+    def _performance_warnings(self, models: dict[str, VehicleModel]) -> list[str]:
+        cams = []
+        for v in self.scenario.vehicles:
+            m = models.get(v.name or "")
+            if m is None or not _wants_camera(m, v):
+                continue
+            c = v.camera
+            own = m.camera_size or (1280, 720)
+            explicit = c.model_fields_set if c else set()
+            w = c.width if c and (not m.has_camera or "width" in explicit) else own[0]
+            h = c.height if c and (not m.has_camera or "height" in explicit) else own[1]
+            cams.append(perf.Camera(v.name or v.model, w, h, c.fps if c else 30))
+        world = self.catalog.worlds.get(self.scenario.world or "")
+        return perf.warnings(cams, world.path if world else None, self.scenario.headless)
+
+    def sim_speed(self) -> float | None:
+        """Simulated seconds per real second, the slowest vehicle's (1.0 = real time)."""
+        speeds = [v.link.telemetry.sim_speed for v in self.vehicles
+                  if v.link and v.link.telemetry.sim_speed is not None]
+        return min(speeds) if speeds else None
+
+    async def _watch_speed(self) -> None:
+        """Say once, with the likely causes, when the simulation crawls."""
+        slow = 0
+        while self.state == SimState.RUNNING:
+            await asyncio.sleep(5)
+            speed = self.sim_speed()
+            slow = slow + 1 if speed is not None and speed < 0.5 else 0
+            if slow == 3:
+                tips = self._performance_warnings({v.name: v.model for v in self.vehicles}) or [
+                    "the computer is busy with other work"]
+                self.log("hangar", f"the simulation runs at {speed * 100:.0f}% of real time, so ArduPilot "
+                         "takes much longer to become ready. Likely causes: " + "; ".join(tips), "warning")
+                return
 
     # --- start / stop ----------------------------------------------------
 
@@ -277,10 +316,15 @@ class Supervisor:
         self._open_logfile()
         self.log("hangar", f"run directory: {self.run_dir}", "event")
 
+        poses = self.scenario.placed_poses()
         self.vehicles = [
-            VehicleRuntime(spec, self.catalog.get(spec.model), ports, self.run_dir / ports.name)  # type: ignore[arg-type]
-            for spec, ports in zip(self.scenario.vehicles, pf.plan.vehicles)
+            VehicleRuntime(spec, self.catalog.get(spec.model), ports, self.run_dir / ports.name,  # type: ignore[arg-type]
+                           pose=pose)
+            for spec, ports, pose in zip(self.scenario.vehicles, pf.plan.vehicles, poses)
         ]
+        for v in self.vehicles:
+            if not v.spec.placed and len(self.vehicles) > 1:
+                self.log(v.name, f"no pose given: placed at x={v.pose[0]:g}, y={v.pose[1]:g}", "event")
 
         if self.uses_gazebo:
             await self._start_gazebo()
@@ -289,6 +333,9 @@ class Supervisor:
         self.started_at = time.time()
         self._set_state(SimState.RUNNING)
         self.log("hangar", f"{len(self.vehicles)} vehicle(s) running", "event")
+        watcher = asyncio.create_task(self._watch_speed())
+        self._background.add(watcher)
+        watcher.add_done_callback(self._background.discard)
 
         if self.uses_gazebo:  # cameras only need Gazebo, not the autopilots
             for v in self.vehicles:
@@ -321,7 +368,7 @@ class Supervisor:
         assert self.run_dir and self.scenario.world
         world = self.catalog.worlds[self.scenario.world]
         gz_vehicles = [
-            WorldVehicle(v.model, v.ports, v.spec.pose_sdf, v.spec.camera)
+            WorldVehicle(v.model, v.ports, " ".join(f"{x:g}" for x in v.pose), v.spec.camera)
             for v in self.vehicles if v.model.needs_gazebo
         ]
         ardupilot_models = {n for n, m in self.catalog.vehicles.items() if m.needs_gazebo}
@@ -390,7 +437,7 @@ class Supervisor:
 
         home = self.home()
         if not m.needs_gazebo:  # built-in physics: spread vehicles out by their pose
-            x, y, yaw = v.spec.pose[0], v.spec.pose[1], v.spec.pose[5]
+            x, y, yaw = v.pose[0], v.pose[1], v.pose[5]
             home = home.offset(north_m=y, east_m=x)
             if yaw:
                 home = home.model_copy(update={"heading": (90.0 - yaw) % 360})

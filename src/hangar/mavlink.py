@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -76,6 +77,7 @@ class Telemetry:
     satellites: int = 0
     ready: bool | None = None  # pre-arm checks passing
     rx_messages: int = 0
+    sim_speed: float | None = None  # simulated seconds per real second, from the autopilot's clock
 
     @property
     def alive(self) -> bool:
@@ -230,6 +232,7 @@ class VehicleLink:
         self._acks: dict[int, asyncio.Future] = {}
         self._param_waits: dict[str, asyncio.Future] = {}
         self._connected = asyncio.Event()
+        self._clock_samples: deque[tuple[float, int]] = deque()
 
     # --- lifecycle -------------------------------------------------------
 
@@ -339,6 +342,9 @@ class VehicleLink:
             return
         t = self.telemetry
         t.rx_messages += 1
+        boot = getattr(m, "time_boot_ms", None)
+        if boot is not None:
+            self._clock(boot)
         kind = m.get_type()
         if kind == "HEARTBEAT":
             if m.get_srcComponent() != 1 or m.type == mav.MAV_TYPE_GCS:
@@ -378,6 +384,19 @@ class VehicleLink:
             fut = self._param_waits.pop(pid, None)
             if fut and not fut.done():
                 fut.set_result(m.param_value)
+
+    def _clock(self, boot_ms: int) -> None:
+        """Compare the autopilot's clock (simulated time in SITL) with the real one."""
+        now = time.monotonic()
+        samples = self._clock_samples
+        if samples and boot_ms < samples[-1][1]:
+            samples.clear()  # the autopilot restarted
+        samples.append((now, boot_ms))
+        while len(samples) > 2 and now - samples[0][0] > 10:
+            samples.popleft()
+        wall = now - samples[0][0]
+        if wall >= 2:
+            self.telemetry.sim_speed = (boot_ms - samples[0][1]) / 1000 / wall
 
     def _text(self, level: str, text: str) -> None:
         if self.on_text:
