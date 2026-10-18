@@ -66,3 +66,31 @@ def test_visual_only_buildings_do_not_count(tmp_path):
     world.write_text("<sdf/>")
     (tmp_path / "hangar-earth.json").write_text(json.dumps({"buildings": {"count": 9000, "collision": False}}))
     assert perf.world_weight(world) == (0, 0)
+
+
+def test_busy_instance_zero_moves_to_a_free_one(settings, monkeypatch):
+    import socket
+
+    from hangar.catalog import Catalog
+    from hangar.ports import SERIAL0_BASE
+    from hangar.scenario import Scenario
+    from hangar.supervisor import Supervisor
+
+    sc = Scenario.model_validate({"vehicles": [{"model": "sitl:copter"}]})
+    with socket.socket() as other_sitl:
+        other_sitl.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            other_sitl.bind(("0.0.0.0", SERIAL0_BASE))
+        except OSError:
+            pass  # something already holds it: just as good
+        other_sitl.listen()
+        sup = Supervisor(sc, settings, Catalog(settings))
+        pf = sup.preflight()
+        assert sup._auto_instance >= 1
+        assert not [e for e in pf.errors if "port conflict" in e]
+        assert any("using instance" in w for w in pf.warnings)
+        assert pf.plan.vehicles[0].instance == sup._auto_instance
+        assert "first_instance" not in sc.dump()  # the scenario as written is unchanged
+        explicit = Scenario.model_validate({"first_instance": 0, "vehicles": [{"model": "sitl:copter"}]})
+        pf = Supervisor(explicit, settings, Catalog(settings)).preflight()
+        assert any("port conflict" in e for e in pf.errors)  # chosen by the user: kept, and reported

@@ -24,7 +24,7 @@ from pathlib import Path
 from . import camera, paths, perf
 from .catalog import Catalog, VehicleModel
 from .mavlink import VehicleLink
-from .ports import Endpoint, PortPlan, VehiclePorts, port_in_use
+from .ports import SERIAL0_BASE, STRIDE, Endpoint, PortPlan, VehiclePorts, port_in_use
 from .process import ManagedProcess, ProcState
 from .scenario import CameraSpec, Home, Scenario, VehicleSpec
 from .settings import Settings
@@ -109,6 +109,7 @@ class Supervisor:
         on_state: Callable[[SimState], None] | None = None,
     ):
         self.scenario = scenario
+        self._auto_instance = 0  # see pick_instance()
         self.settings = settings
         self.catalog = catalog
         self.on_log = on_log
@@ -191,6 +192,11 @@ class Supervisor:
     def preflight(self, check_ports: bool = True) -> Preflight:
         errors: list[str] = []
         warnings: list[str] = []
+        if check_ports and self.scenario.vehicles:
+            n = self.pick_instance()
+            if self._auto_instance:
+                warnings.append(f"the ports of instance 0 are taken by another program (another SITL?): "
+                                f"using instance {n}, MAVLink tcp:{SERIAL0_BASE + STRIDE * n} and up")
         sc = self.scenario
         if not sc.vehicles:
             errors.append("the scenario has no vehicles")
@@ -233,7 +239,7 @@ class Supervisor:
         plan = None
         try:
             plan = PortPlan.build(
-                sc,
+                self.effective_scenario(sc),
                 gazebo={n: m.needs_gazebo for n, m in models.items()},
                 cameras={v.name: _wants_camera(models[v.name], v) for v in sc.vehicles if v.name in models},
             )
@@ -299,6 +305,28 @@ class Supervisor:
         finally:
             self._start_task = None
 
+    def pick_instance(self) -> int:
+        """When the scenario does not choose ``first_instance`` and another program (usually a
+        SITL started elsewhere) holds the ports of instance 0, use the first free instance.
+        The scenario itself is not changed. Returns the instance used."""
+        sc = self.scenario
+        self._auto_instance = 0
+        if "first_instance" in sc.model_fields_set:
+            return sc.first_instance
+        for n in range(0, 50):
+            plan = self._plan_for(sc.model_copy(update={"first_instance": n}))
+            if not any(not b.owner.endswith("output") and port_in_use(b.proto, b.port) for b in plan.bindings()):
+                self._auto_instance = n
+                return n
+        return 0
+
+    def effective_scenario(self, scenario: Scenario | None = None) -> Scenario:
+        """The scenario as it runs: with the instance picked by pick_instance()."""
+        sc = scenario or self.scenario
+        if not self._auto_instance or "first_instance" in sc.model_fields_set:
+            return sc
+        return sc.model_copy(update={"first_instance": self._auto_instance})
+
     async def _start(self) -> None:
         pf = await asyncio.to_thread(self.preflight)
         for w in pf.warnings:
@@ -312,7 +340,7 @@ class Supervisor:
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         self.run_dir = paths.runs_dir() / f"{stamp}-{self.scenario.name}"
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        (self.run_dir / "scenario.yaml").write_text(self.scenario.dump(), encoding="utf-8")
+        (self.run_dir / "scenario.yaml").write_text(self.effective_scenario().dump(), encoding="utf-8")
         self._open_logfile()
         self.log("hangar", f"run directory: {self.run_dir}", "event")
 
@@ -593,7 +621,7 @@ class Supervisor:
     def _plan_for(self, scenario: Scenario) -> PortPlan:
         models = {v.name: self.catalog.get(v.model) for v in scenario.vehicles}
         return PortPlan.build(
-            scenario,
+            self.effective_scenario(scenario),
             gazebo={n: bool(m and m.needs_gazebo) for n, m in models.items()},
             cameras={v.name: bool(models[v.name]) and _wants_camera(models[v.name], v) for v in scenario.vehicles},
         )

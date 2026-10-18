@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4 (2026-10-18)
+
+- **A SITL already running elsewhere no longer blocks the start**: when the ports of instance 0
+  are taken and the scenario does not set `first_instance`, Hangar uses the first free instance
+  and says so (preflight warning). The scenario file is not changed; a `first_instance` you
+  write is kept as it is.
+
 ## 0.3.3 (2026-10-18)
 
 - **`first_instance`** in a scenario: start the SITLs at another instance number (every port
