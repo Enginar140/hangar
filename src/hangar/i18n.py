@@ -126,6 +126,12 @@ TR.update({
         "{i} her araca kendi portunu verir. Değişiklik simülasyon çalışırken de anında uygulanır."
     ),
     "Quality": "Kalite",
+    "Open folder": "Klasörü aç",
+    "lines": "satır",
+    "Save the log shown (with the current filter)": "Görünen logu kaydet (mevcut filtreyle)",
+    "No clipboard tool found: sudo apt install wl-clipboard xclip":
+        "Pano aracı bulunamadı: sudo apt install wl-clipboard xclip",
+    "Log file": "Log dosyası",
     "FOV°": "Açı°",
     "Looks": "Yön",
     "ahead": "ileri",

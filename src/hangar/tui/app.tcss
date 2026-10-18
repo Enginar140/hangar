@@ -91,6 +91,10 @@ TabPane {
     width: 32;
 }
 
+#log-bar Button {
+    margin-left: 2;
+}
+
 #log {
     height: 1fr;
     border: round $panel-lighten-1;

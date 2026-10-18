@@ -64,6 +64,7 @@ gazebo:
   wildthumper:            {type: rover}
   wildthumper_with_lidar: {type: rover}
   daf_xf_450_tractor:     {type: rover}
+  lawnmower:              {type: rover}
   blueboat:               {type: boat}
   catamaran:              {type: boat}
   daf_xf_450_flatbed_trailer: {skip: true}   # towed by the tractor, not a vehicle

@@ -118,6 +118,8 @@ class Supervisor:
         self._env: dict[str, str] = dict(os.environ)
         self._start_task: asyncio.Task | None = None
         self._background: set[asyncio.Task] = set()
+        self._logfile = None
+        self._attempt_started = 0.0
         atexit.register(self._kill_all)
 
     # --- logging / state -------------------------------------------------
@@ -125,8 +127,37 @@ class Supervisor:
     def log(self, source: str, text: str, level: str = "info") -> None:
         line = LogLine(time.time(), source, level, text)
         self.logs.append(line)
+        if self._logfile:
+            self._logfile.write(format_plain(line) + "\n")
         if self.on_log:
             self.on_log(line)
+
+    def _open_logfile(self) -> None:
+        """Everything shown in the UI also goes to <run>/logs/hangar.log, from the
+        preflight messages of this start on."""
+        assert self.run_dir
+        path = self.run_dir / "logs" / "hangar.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._logfile = path.open("a", encoding="utf-8", buffering=1)
+        for line in self.logs:
+            if line.time >= self._attempt_started:
+                self._logfile.write(format_plain(line) + "\n")
+        latest = paths.runs_dir() / "latest"
+        try:
+            if latest.is_symlink() or latest.exists():
+                latest.unlink()
+            latest.symlink_to(self.run_dir.name)
+        except OSError:
+            pass
+
+    def _close_logfile(self) -> None:
+        if self._logfile:
+            self._logfile.close()
+            self._logfile = None
+
+    @property
+    def log_file(self) -> Path | None:
+        return self.run_dir / "logs" / "hangar.log" if self.run_dir else None
 
     def _line(self, source: str, text: str) -> None:
         level = "event" if text.startswith("[hangar]") else "info"
@@ -205,6 +236,7 @@ class Supervisor:
         if self.state in (SimState.STARTING, SimState.RUNNING, SimState.STOPPING):
             raise SupervisorError(f"simulation is {self.state.value}")
         self._start_task = asyncio.current_task()
+        self._attempt_started = time.time()
         self._set_state(SimState.STARTING)
         try:
             await self._start()
@@ -215,6 +247,7 @@ class Supervisor:
             self.log("hangar", f"start failed: {e}", "error")
             await self._teardown()
             self._set_state(SimState.ERROR)
+            self._close_logfile()
             raise SupervisorError(str(e)) from e
         finally:
             self._start_task = None
@@ -233,6 +266,7 @@ class Supervisor:
         self.run_dir = paths.runs_dir() / f"{stamp}-{self.scenario.name}"
         self.run_dir.mkdir(parents=True, exist_ok=True)
         (self.run_dir / "scenario.yaml").write_text(self.scenario.dump(), encoding="utf-8")
+        self._open_logfile()
         self.log("hangar", f"run directory: {self.run_dir}", "event")
 
         self.vehicles = [
@@ -509,6 +543,7 @@ class Supervisor:
         self.started_at = None
         self._set_state(SimState.IDLE)
         self.log("hangar", "stopped", "event")
+        self._close_logfile()
 
     async def _teardown(self) -> None:
         for task in list(self._background):
@@ -543,6 +578,11 @@ class Supervisor:
         if self.vehicles:
             return PortPlan([v.ports for v in self.vehicles])
         return self.preflight(check_ports=False).plan
+
+
+def format_plain(line: LogLine) -> str:
+    stamp = datetime.fromtimestamp(line.time).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    return f"{stamp}  {line.level.upper():7}  {line.source:<20}  {line.text}"
 
 
 def _wants_camera(model: VehicleModel, spec: VehicleSpec) -> bool:

@@ -46,8 +46,9 @@ The installer asks before each step:
 1. installs [uv](https://docs.astral.sh/uv/) and Hangar for your user (no sudo, and the system Python is left alone),
 2. downloads ArduPilot's **official prebuilt SITL** (arducopter, arduplane, ardurover 4.7.2, about 21 MB,
    seconds, no compiler); `--build-ardupilot` builds from source instead,
-3. optionally installs Gazebo Harmonic, the ArduPilot Gazebo plugin and example models,
-4. runs `hangar doctor`.
+3. installs a clipboard tool (wl-clipboard, xclip) for the Copy buttons,
+4. optionally installs Gazebo Harmonic, the ArduPilot Gazebo plugin and example models,
+5. runs `hangar doctor`.
 
 Already have ArduPilot? Point Hangar at it instead:
 
@@ -80,7 +81,19 @@ hangar up quickstart.yaml      # run without the UI, Ctrl+C stops
 hangar ports quickstart.yaml   # port plan + preflight checks
 hangar models / hangar worlds  # what can be launched
 hangar doctor                  # what is installed, what is missing, how to fix it
+hangar logs                    # log of the latest run   (-f follow, -w warnings only, --list runs)
 ```
+
+### Logs
+
+Every run writes everything the UI shows (Hangar's events and every vehicle's
+MAVLink messages, such as PreArm failures and mode changes) to
+`~/.local/state/hangar/runs/<run>/logs/hangar.log`. Each SITL and Gazebo also
+has its own raw log next to it. `runs/latest` always points to the newest run.
+The Logs tab can **Save** the view with its current filter to a file,
+**Copy** it, or **Open the run folder**. From a shell, use
+`hangar logs -f` (follow), `hangar logs -w` (warnings only) or
+`hangar logs --file plane/sitl.log`.
 
 ### Terminal UI keys
 

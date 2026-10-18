@@ -125,6 +125,62 @@ def _print_status(sup) -> None:
                       highlight=False)
 
 
+def cmd_logs(args, settings: Settings) -> int:
+    runs = sorted((p for p in paths.runs_dir().glob("*") if p.is_dir() and not p.is_symlink()),
+                  key=lambda p: p.name, reverse=True) if paths.runs_dir().is_dir() else []
+    if args.list:
+        if not runs:
+            console.print("no runs yet")
+            return 0
+        table = Table("Run", "Log files", "Path", header_style="bold")
+        for r in runs[:20]:
+            logs = sorted(str(p.relative_to(r)) for p in r.rglob("*.log"))
+            table.add_row(r.name, ", ".join(logs) or "—", str(r))
+        console.print(table)
+        return 0
+    if args.run in (None, "latest"):
+        run = runs[0] if runs else None
+    else:
+        run = next((r for r in runs if r.name.startswith(args.run) or args.run in r.name), None)
+    if run is None:
+        err.print("no such run; `hangar logs --list` shows them")
+        return 1
+    log = run / (args.file or "logs/hangar.log")
+    if not log.exists():
+        options = ", ".join(str(p.relative_to(run)) for p in run.rglob("*.log"))
+        err.print(f"{log} not found; files in this run: {options or 'none'}")
+        return 1
+    err.print(f"[dim]{log}[/]")
+    with log.open(encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+        start = max(0, len(lines) - args.lines) if args.lines else 0
+        for line in lines[start:]:
+            _print_log_line(line, args.warnings)
+        if not args.follow:
+            return 0
+        import time
+
+        try:
+            while True:
+                line = f.readline()
+                if line:
+                    _print_log_line(line, args.warnings)
+                else:
+                    time.sleep(0.3)
+        except KeyboardInterrupt:
+            return 0
+
+
+def _print_log_line(line: str, warnings_only: bool) -> None:
+    style = "red" if "  ERROR  " in line else "yellow" if "  WARNING" in line else \
+        "cyan" if "  EVENT  " in line else ""
+    if warnings_only and style not in ("red", "yellow"):
+        return
+    text = escape(line.rstrip("\n"))
+    console.print(f"[{style}]{text}[/]" if style else text, highlight=False, soft_wrap=True)
+    console.file.flush()  # line by line, also through `| grep`
+
+
 def cmd_ports(args, settings: Settings) -> int:
     from .catalog import Catalog
     from .supervisor import Supervisor
@@ -332,6 +388,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("worlds", help="list Gazebo worlds")
     sub.add_parser("doctor", help="check the installation")
 
+    logs = sub.add_parser("logs", help="show the log of the latest (or a given) run")
+    logs.add_argument("run", nargs="?", help="run name or part of it (default: latest)")
+    logs.add_argument("--list", action="store_true", help="list runs and their log files")
+    logs.add_argument("-f", "--follow", action="store_true", help="keep printing new lines")
+    logs.add_argument("-n", "--lines", type=int, default=0, metavar="N", help="only the last N lines")
+    logs.add_argument("-w", "--warnings", action="store_true", help="only warnings and errors")
+    logs.add_argument("--file", help="another log of the run, e.g. logs/gazebo.log or plane/sitl.log")
+
     cfg = sub.add_parser("config", help="show or change settings")
     cfg.add_argument("action", choices=["show", "set", "add", "path"])
     cfg.add_argument("key", nargs="?")
@@ -346,7 +410,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMANDS = {
     "tui": cmd_tui, "up": cmd_up, "ports": cmd_ports, "init": cmd_init, "models": cmd_models,
-    "worlds": cmd_worlds, "doctor": cmd_doctor, "config": cmd_config, "sources": cmd_sources,
+    "worlds": cmd_worlds, "doctor": cmd_doctor, "logs": cmd_logs, "config": cmd_config, "sources": cmd_sources,
 }
 
 

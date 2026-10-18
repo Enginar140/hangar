@@ -44,3 +44,22 @@ def test_home_offset():
     moved = home.offset(north_m=111_319.5, east_m=0)
     assert moved.lat == pytest.approx(41.0, abs=1e-3)
     assert moved.lon == pytest.approx(29.0)
+
+
+def test_log_file_written_for_a_run(settings, tmp_path):
+    from hangar import paths
+    from hangar.catalog import Catalog
+    from hangar.supervisor import Supervisor
+
+    sc = Scenario.model_validate({"vehicles": [{"model": "sitl:plane"}]})
+    sup = Supervisor(sc, settings, Catalog(settings))
+    sup.log("hangar", "before the run", "info")
+    sup._attempt_started = 0.0
+    sup.run_dir = paths.runs_dir() / "20260101-000000-test"
+    sup.run_dir.mkdir(parents=True)
+    sup._open_logfile()
+    sup.log("plane", "PreArm: Gyros inconsistent", "error")
+    sup._close_logfile()
+    text = (sup.run_dir / "logs" / "hangar.log").read_text()
+    assert "before the run" in text and "ERROR    plane" in text
+    assert (paths.runs_dir() / "latest").resolve() == sup.run_dir.resolve()

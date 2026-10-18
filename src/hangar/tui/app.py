@@ -42,7 +42,7 @@ from ..mavlink import CommandError
 from ..ports import PlanError, output_rows
 from ..scenario import Scenario, VehicleSpec
 from ..settings import Settings
-from ..supervisor import LogLine, SimState, Supervisor, SupervisorError, VehicleRuntime
+from ..supervisor import LogLine, SimState, Supervisor, SupervisorError, VehicleRuntime, format_plain
 from .screens import (
     TYPE_ICONS,
     CameraScreen,
@@ -52,6 +52,7 @@ from .screens import (
     OutputDialog,
     PathDialog,
     VehicleEditor,
+    copy_text,
     highlight,
 )
 
@@ -165,6 +166,9 @@ class HangarApp(App):
                                  value="*", compact=True)
                     yield Label(t("Warnings only"))
                     yield Switch(id="log-warn")
+                    yield Button(t("Save"), id="log-save", compact=True)
+                    yield Button(t("Copy"), id="log-copy", compact=True)
+                    yield Button(t("Open folder"), id="log-open", compact=True)
                 yield RichLog(id="log", markup=True, wrap=True, max_lines=5000)
             with TabPane(t("Ports"), id="tab-ports"):
                 with VerticalScroll(id="ports-pane"):
@@ -389,7 +393,8 @@ class HangarApp(App):
         else:
             lines.append(f"[green]✓ {t('All checks passed')}[/]")
         if self.supervisor.run_dir:
-            lines.append(f"\n[dim]{t('Run directory')}: {escape(str(self.supervisor.run_dir))}[/]")
+            lines.append(f"\n[dim]{t('Run directory')}: {escape(str(self.supervisor.run_dir))}\n"
+                         f"{t('Log file')}: {escape(str(self.supervisor.log_file))}[/]")
         box.update("\n".join(lines))
 
         table = self._main.query_one("#ports", DataTable)
@@ -531,6 +536,49 @@ class HangarApp(App):
     @on(Switch.Changed, "#log-warn")
     def _log_filter(self) -> None:
         self._rebuild_logs()
+
+    def _filtered_logs(self) -> list[LogLine]:
+        return [line for line in self.supervisor.logs if self._log_matches(line)]
+
+    @on(Button.Pressed, "#log-save")
+    def _log_save(self) -> None:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        default = str(Path.cwd() / f"hangar-log-{stamp}.txt")
+
+        def done(path: str | None) -> None:
+            if not path:
+                return
+            lines = self._filtered_logs()
+            try:
+                Path(path).write_text("".join(format_plain(x) + "\n" for x in lines), encoding="utf-8")
+            except OSError as e:
+                self.notify(str(e), severity="error")
+                return
+            self.notify(f"{t('Saved')}: {path} ({len(lines)} {t('lines')})", timeout=6)
+
+        self.push_screen(PathDialog(t("Save the log shown (with the current filter)"), default), done)
+
+    @on(Button.Pressed, "#log-copy")
+    def _log_copy(self) -> None:
+        text = "".join(format_plain(x) + "\n" for x in self._filtered_logs()[-2000:])
+        if copy_text(text):
+            self.notify(t("Copied to the clipboard"))
+        else:
+            self.copy_to_clipboard(text)
+            self.notify(t("No clipboard tool found: sudo apt install wl-clipboard xclip"), severity="warning",
+                        timeout=8)
+
+    @on(Button.Pressed, "#log-open")
+    def _log_open(self) -> None:
+        import shutil
+        import subprocess
+
+        folder = self.supervisor.run_dir or paths.runs_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        if shutil.which("xdg-open"):
+            subprocess.Popen(["xdg-open", str(folder)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        self.notify(str(folder), timeout=8)
 
     @on(TabbedContent.TabActivated)
     def _tab_activated(self, event: TabbedContent.TabActivated) -> None:

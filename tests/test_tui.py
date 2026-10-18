@@ -172,3 +172,20 @@ async def test_ports_tab_add_and_remove_output(settings):
         app.query_one("#out-remove", Button).press()
         await pilot.pause(0.5)
         assert app.scenario.outputs == ["udp:127.0.0.1:14550"]
+
+
+async def test_logs_save(settings, tmp_path):
+    app = HangarApp(scenario=Scenario(name="t"), settings=settings)
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.supervisor.log("hangar", "hello from the test", "warning")
+        app.supervisor.log("plane", "PreArm: Need Position Estimate", "error")
+        await pilot.press("2")
+        await pilot.pause()
+        app.query_one("#log-save", Button).press()
+        await pilot.pause()
+        out = tmp_path / "saved.log"
+        app.screen.query_one("#path", Input).value = str(out)
+        app.screen.query_one("#ok", Button).press()
+        await pilot.pause()
+        text = out.read_text()
+        assert "WARNING  hangar" in text and "PreArm: Need Position Estimate" in text

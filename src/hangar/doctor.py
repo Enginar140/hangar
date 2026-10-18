@@ -97,6 +97,10 @@ def run_checks(settings: Settings) -> list[Check]:
                   "sudo apt install v4l2loopback-dkms && "
                   "sudo modprobe v4l2loopback video_nr=2 card_label=Hangar exclusive_caps=1"))
 
+    clip = next((c for c in ("wl-copy", "xclip", "xsel") if shutil.which(c)), None)
+    add(Check("Clipboard", "ok" if clip else "warn", clip or "no clipboard tool (Copy buttons need one)",
+              "sudo apt install wl-clipboard xclip"))
+
     if shutil.which("nvidia-smi"):
         code, out = _run(["nvidia-smi", "-L"])
         add(Check("NVIDIA driver", "ok" if code == 0 else "warn",

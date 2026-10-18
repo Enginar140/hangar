@@ -32,8 +32,9 @@ Kurulum her adımdan önce sorar:
 
 1. [uv](https://docs.astral.sh/uv/) ile Hangar'ı kullanıcı dizinine kurar. sudo gerekmez, sistem Python'una dokunulmaz.
 2. ArduPilot'un **resmi hazır derlenmiş SITL**'ini indirir: arducopter, arduplane ve ardurover 4.7.2, toplam yaklaşık 21 MB. Birkaç saniye sürer, derleyici gerekmez. Kaynaktan derlemek istersen `--build-ardupilot` seçeneğini kullan.
-3. İstersen Gazebo Harmonic'i, ArduPilot Gazebo eklentisini ve örnek modelleri kurar.
-4. Sonunda `hangar doctor` ile kurulumu kontrol eder.
+3. Kopyala butonları için pano aracını (wl-clipboard, xclip) kurar.
+4. İstersen Gazebo Harmonic'i, ArduPilot Gazebo eklentisini ve örnek modelleri kurar.
+5. Sonunda `hangar doctor` ile kurulumu kontrol eder.
 
 ArduPilot zaten kuruluysa Hangar'a onun yerini göstermen yeterli:
 
@@ -65,7 +66,20 @@ hangar up quickstart.yaml      # arayüzsüz çalıştırır, Ctrl+C ile durur
 hangar ports quickstart.yaml   # port planını ve ön kontrolleri gösterir
 hangar models / hangar worlds  # başlatılabilecek araçlar ve dünyalar
 hangar doctor                  # neyin kurulu olduğunu, neyin eksik olduğunu ve çözümünü gösterir
+hangar logs                    # son çalıştırmanın logu (-f canlı izle, -w sadece uyarılar, --list çalıştırmalar)
 ```
+
+### Loglar
+
+Her çalıştırma, arayüzde görünen her şeyi tek bir dosyaya yazar:
+`~/.local/state/hangar/runs/<çalıştırma>/logs/hangar.log`. Buna Hangar'ın
+olayları ve araçların tüm MAVLink mesajları (PreArm hataları, mod
+değişiklikleri vb.) dahildir. Her SITL'in ve Gazebo'nun ham logu da aynı
+klasörde ayrı dosyalarda durur. `runs/latest` her zaman en son çalıştırmayı
+gösterir. Günlük sekmesindeki butonlarla görünen logu mevcut filtreyle
+**kaydedebilir**, **kopyalayabilir** ya da çalıştırma **klasörünü açabilirsin**.
+Terminalden: `hangar logs -f` (canlı), `hangar logs -w` (sadece uyarılar),
+`hangar logs --file plane/sitl.log`.
 
 ### Arayüz tuşları
 

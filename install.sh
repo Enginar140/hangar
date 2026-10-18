@@ -131,6 +131,22 @@ HANGAR="$(command -v hangar || echo "$HOME/.local/bin/hangar")"
 ok "$("$HANGAR" --version) at $HANGAR"
 uv tool update-shell >/dev/null 2>&1 || true
 
+# --- 2b. clipboard ---------------------------------------------------------------
+
+step "Clipboard tool"
+if command -v wl-copy >/dev/null || command -v xclip >/dev/null || command -v xsel >/dev/null; then
+    ok "available"
+else
+    info "Hangar's Copy buttons (camera code, logs) need a clipboard tool:"
+    info "wl-clipboard for Wayland and xclip for X11 (both tiny, from Ubuntu's repositories)."
+    if ask "Install wl-clipboard and xclip?"; then
+        apt_install wl-clipboard xclip
+        ok "installed"
+    else
+        warn "skipped; Copy falls back to saving files. Later: sudo apt install wl-clipboard xclip"
+    fi
+fi
+
 # --- 3. ArduPilot -----------------------------------------------------------------
 
 if [ "$WITH_ARDUPILOT" = 1 ]; then
