@@ -140,16 +140,13 @@ if [ "$WITH_ARDUPILOT" = 1 ]; then
     elif [ "$BUILD_ARDUPILOT" = 1 ]; then
         info "Building ArduPilot from source (10-30 minutes, installs its prerequisites with sudo)."
         ensure_cmds git
-        hangar_cmd sources fetch ardupilot
-        hangar_cmd sources build ardupilot
+        hangar_cmd sources fetch ardupilot && hangar_cmd sources build ardupilot \
+            || warn "skipped; later: hangar sources fetch ardupilot && hangar sources build ardupilot"
     else
         info "Hangar uses ArduPilot's official prebuilt SITL binaries (about 21 MB, seconds)."
         info "Already have your own build? Answer no and run: hangar config set ardupilot.dir PATH"
-        if ask "Download ArduPilot SITL 4.7.2?"; then
-            hangar_cmd sources fetch ardupilot_sitl
-        else
-            warn "skipped; later: hangar sources fetch ardupilot_sitl"
-        fi
+        # hangar shows the license and asks itself, so there is a single question
+        hangar_cmd sources fetch ardupilot_sitl || warn "skipped; later: hangar sources fetch ardupilot_sitl"
     fi
 fi
 
@@ -178,8 +175,8 @@ if [ "$WITH_GAZEBO" = 1 ]; then
         ok "Gazebo installed"
     fi
     ensure_cmds git
-    hangar_cmd sources fetch ardupilot_gazebo sitl_models
-    hangar_cmd sources build ardupilot_gazebo
+    hangar_cmd sources fetch ardupilot_gazebo sitl_models && hangar_cmd sources build ardupilot_gazebo \
+        || warn "skipped; later: hangar sources fetch ardupilot_gazebo sitl_models && hangar sources build ardupilot_gazebo"
 fi
 
 # --- 5. done -------------------------------------------------------------------------

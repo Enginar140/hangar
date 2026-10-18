@@ -50,7 +50,8 @@ def _confirm(question: str, assume_yes: bool) -> bool:
     if not sys.stdin.isatty():
         err.print("[red]not a terminal; pass --yes to confirm[/]")
         return False
-    return console.input(f"{question} [bold][y/N][/] ").strip().lower() in ("y", "yes", "e", "evet")
+    # "\[" keeps rich from reading [y/N] as a style tag (which hid the prompt)
+    return console.input(f"{question} [bold]\\[y/N][/] ").strip().lower() in ("y", "yes", "e", "evet")
 
 
 # --- commands ----------------------------------------------------------------
