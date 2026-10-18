@@ -8,7 +8,19 @@ MAVLink trafiğini yer istasyonuna yönlendirir ve bütün filoyu tek bir termin
 arayüzünde gösterir. Tüm portlar tek bir port planından gelir, ekran da onlarca
 pencereyle dolmaz.
 
+![Hangar üç aracı çalıştırıyor: Gazebo'da bir uçak, 15 m'de asılı duran bir Gazebo copter ve dahili fizikli bir uçak](docs/images/tr-vehicle.png)
+
+<sub>Tek terminalde üç araç: burun kameralı bir Gazebo uçağı, aşağı bakan kamerasıyla 15 m'de asılı duran bir Gazebo copter ve ArduPilot'un dahili fiziğiyle uçan bir uçak.</sub>
+
 [English README](README.md)
+
+## Ekran görüntüleri
+
+| Portlar: çıkışlar, paylaşım, araç başına script portları | Kamera: yayın durumu ve hazır kod |
+|---|---|
+| ![Portlar sekmesi](docs/images/tr-ports.png) | ![Kamera penceresi](docs/images/tr-camera.png) |
+| **Günlük: tüm araçların mesajları, filtrele, kaydet, kopyala** | **Uçağın burun kamerasının gördüğü (OpenCV karesi)** |
+| ![Günlük sekmesi](docs/images/tr-logs.png) | ![Kamera karesi](docs/images/camera-frame.jpg) |
 
 ## Neden?
 

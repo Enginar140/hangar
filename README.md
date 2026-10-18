@@ -8,17 +8,19 @@ to your ground station and shows the whole fleet in one terminal UI. A single
 port plan covers every vehicle, and Hangar never opens a pile of terminal
 windows.
 
-```
- ● RUNNING   World: skywalker_x8_runway   3 vehicles   Uptime 00:04:12
- #  Name     Model            Status   Mode     Armed  Ready  Alt      Speed     Battery  GPS
- 0  alpha    ✈ skywalker_x8   online   AUTO     ARMED  ✓      84.2 m   22.1 m/s  91%      3D (10)
- 1  bravo    ✈ firtinam       online   FBWA     ARMED  ✓      61.0 m   19.4 m/s  88%      3D (10)
- 2  scout    ✣ sitl:copter    online   GUIDED   no     ✓      0.0 m    0.0 m/s   100%     3D (10)
- ┌ Vehicle ─ Logs ─ Ports ─ Scenario ──────────────────────────────────────────────────┐
- │ telemetry · arm/disarm · takeoff · mode · RTL · land · camera · command line · logs │
-```
+![Hangar running three vehicles: a Gazebo plane, a Gazebo copter hovering at 15 m and a built-in physics plane](docs/images/en-vehicle.png)
+
+<sub>Three vehicles in one terminal: a Gazebo plane with a nose camera, a Gazebo copter hovering at 15 m with a down-looking camera, and a plane with ArduPilot's built-in physics.</sub>
 
 [Türkçe README](README.tr.md)
+
+## Screenshots
+
+| Ports: outputs, sharing, per-vehicle script ports | Camera: stream status and ready-to-paste code |
+|---|---|
+| ![Ports tab](docs/images/en-ports.png) | ![Camera window](docs/images/en-camera.png) |
+| **Logs: every vehicle's messages, filter, save, copy** | **What the plane's nose camera sees (OpenCV frame)** |
+| ![Logs tab](docs/images/en-logs.png) | ![Camera frame](docs/images/camera-frame.jpg) |
 
 ## Why
 

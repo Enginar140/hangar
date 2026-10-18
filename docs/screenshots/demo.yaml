@@ -1,0 +1,17 @@
+name: demo
+world: skywalker_x8_runway
+headless: true
+vehicles:
+  - model: skywalker_x8
+    name: alpha
+    camera: true
+  - model: iris_with_ardupilot
+    name: scout
+    pose: [0, 15, 0.2]
+    camera:
+      pose: [0, 0, -0.05, 0, 90, 0]
+      width: 640
+      height: 480
+  - model: sitl:plane
+    name: bravo
+    pose: [0, 60, 0]
