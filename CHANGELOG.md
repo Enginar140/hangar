@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 (2026-10-18)
 
 - Worlds from real places use hangar-earth 0.2.0: **OpenStreetMap buildings** (one colliding mesh)
   and **your own data** for sharper worlds. `hangar world create` passes `--no-buildings`,
