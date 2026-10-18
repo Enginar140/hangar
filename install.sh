@@ -8,6 +8,7 @@
 #   --gazebo         also install Gazebo Harmonic, the ArduPilot Gazebo plugin and example models
 #   --no-ardupilot   skip ArduPilot (use `hangar config set ardupilot.dir ...` for your own build)
 #   --build-ardupilot   build ArduPilot from source instead of using the official prebuilt SITL
+#   --mavproxy       also install MAVProxy for the shared map (about 900 MB)
 #   --from PATH      install Hangar from a local checkout instead of GitHub
 #
 # Every step says what it will do and asks first. uv provides Python 3.12, so
@@ -22,6 +23,7 @@ ASSUME_YES=0
 WITH_GAZEBO=ask
 WITH_ARDUPILOT=1
 BUILD_ARDUPILOT=0
+WITH_MAVPROXY=ask
 FROM=""
 
 while [ $# -gt 0 ]; do
@@ -31,8 +33,9 @@ while [ $# -gt 0 ]; do
         --no-gazebo) WITH_GAZEBO=0 ;;
         --no-ardupilot) WITH_ARDUPILOT=0 ;;
         --build-ardupilot) BUILD_ARDUPILOT=1 ;;
+        --mavproxy) WITH_MAVPROXY=1 ;;
         --from) FROM="$2"; shift ;;
-        -h|--help) sed -n '2,16p' "$0" 2>/dev/null || true; exit 0 ;;
+        -h|--help) sed -n '2,17p' "$0" 2>/dev/null || true; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -164,6 +167,22 @@ if [ "$WITH_ARDUPILOT" = 1 ]; then
         # hangar shows the license and asks itself, so there is a single question
         hangar_cmd sources fetch ardupilot_sitl || warn "skipped; later: hangar sources fetch ardupilot_sitl"
     fi
+fi
+
+# --- 3b. MAVProxy map (optional) -----------------------------------------------------
+
+step "MAVProxy map (optional)"
+if "$HANGAR" doctor 2>/dev/null | grep -q "✓ MAVProxy"; then
+    ok "already installed"
+elif [ "$WITH_MAVPROXY" = 1 ]; then
+    hangar_cmd sources fetch mavproxy || warn "skipped; later: hangar sources fetch mavproxy"
+elif [ "$ASSUME_YES" = 1 ]; then
+    info "skipped (about 900 MB); add --mavproxy, or later: hangar sources fetch mavproxy"
+else
+    info "The Map button shows every vehicle on one MAVProxy map with its console."
+    info "It needs MAVProxy with wxPython and OpenCV: about 900 MB, no sudo. You can also"
+    info "install it later from the Map button or with: hangar sources fetch mavproxy"
+    hangar_cmd sources fetch mavproxy || warn "skipped; later: hangar sources fetch mavproxy"
 fi
 
 # --- 4. Gazebo (optional) -------------------------------------------------------------

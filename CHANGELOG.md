@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Shared map**: the Map button (`m`) opens MAVProxy's map and console with every vehicle
+  on one map, on a temporary port Hangar adds and removes by itself. `!command` in the
+  command line goes to MAVProxy for the selected vehicle. `hangar up --map`.
+- MAVProxy installs on demand into Hangar's own folder (wxPython wheel for Ubuntu, no VTK,
+  no sudo): from the Map button, `hangar sources fetch mavproxy` or `install.sh --mavproxy`.
+- `hangar doctor` reports MAVProxy.
+
 ## 0.1.0 (2026-10-18)
 
 First release.

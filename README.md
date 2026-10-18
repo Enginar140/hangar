@@ -107,10 +107,12 @@ The Logs tab can **Save** the view with its current filter to a file,
 | `a` | add vehicle | `e` / `d` | edit / remove vehicle |
 | `1`–`4` | Vehicle / Logs / Ports / Scenario tab | `:` | command line for the selected vehicle |
 | `ctrl+s` / `ctrl+o` | save / open scenario | `F2` | doctor |
-| `ctrl+p` | command palette (themes too) | `q` | quit (stops the simulation) |
+| `m` | shared map (MAVProxy) | `ctrl+p` | command palette (themes too) |
+| `q` | quit (stops the simulation) | | |
 
 Vehicle commands (buttons or command line): `arm [force]`, `disarm`, `mode GUIDED`
-(or just `GUIDED`), `takeoff 30`, `rtl`, `land`, `param set NAME VALUE`.
+(or just `GUIDED`), `takeoff 30`, `rtl`, `land`, `param set NAME VALUE`, and
+`!<MAVProxy command>` while the map is open.
 
 The UI is available in English and Turkish and follows `$LANG`. You can also
 pick a language with `hangar config set language tr`.
@@ -173,6 +175,22 @@ It works with pip's `opencv-python`, which has no GStreamer support of its own.
 Only one program can read a UDP port at a time. If several programs need the
 same camera, give it a `v4l2_device` and open that device with
 `cv2.VideoCapture('/dev/video2')`.
+
+### Shared map (MAVProxy)
+
+The **Map** button (or `m`) opens MAVProxy's map and console with **every
+vehicle on one map**. Hangar finds a free port, adds it as a temporary output
+to every vehicle, and starts MAVProxy on it. Closing the map, or stopping the
+simulation, removes both, so the map needs no port settings. In the command
+line, anything starting with `!` goes to MAVProxy for the selected vehicle,
+e.g. `!wp list` or `!fence list`. MAVProxy's answers appear in the Logs tab.
+Headless: `hangar up scenario.yaml --map`.
+
+MAVProxy is optional. The first time you press Map, Hangar offers to install
+it into its own folder (about 900 MB for wxPython and OpenCV, no sudo; GPL-3.0).
+You can also run `hangar sources fetch mavproxy` or `install.sh --mavproxy`. A
+ready-made wxPython exists for Ubuntu 22.04/24.04 on x86_64. Elsewhere, install
+MAVProxy yourself and Hangar uses `mavproxy.py` from your PATH.
 
 ### Ports: connecting ground stations and scripts
 

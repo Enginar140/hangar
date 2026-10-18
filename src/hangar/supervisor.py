@@ -11,7 +11,9 @@ import asyncio
 import atexit
 import enum
 import os
+import re
 import shutil
+import socket
 import time
 from collections import deque
 from collections.abc import Callable
@@ -22,7 +24,7 @@ from pathlib import Path
 from . import camera, paths
 from .catalog import Catalog, VehicleModel
 from .mavlink import VehicleLink
-from .ports import PortPlan, VehiclePorts, port_in_use
+from .ports import Endpoint, PortPlan, VehiclePorts, port_in_use
 from .process import ManagedProcess, ProcState
 from .scenario import Scenario, VehicleSpec
 from .settings import Settings
@@ -120,6 +122,8 @@ class Supervisor:
         self._background: set[asyncio.Task] = set()
         self._logfile = None
         self._attempt_started = 0.0
+        self.mavproxy: ManagedProcess | None = None
+        self._map_output: Endpoint | None = None
         atexit.register(self._kill_all)
 
     # --- logging / state -------------------------------------------------
@@ -395,7 +399,7 @@ class Supervisor:
         )
         await v.process.start()
         v.link = VehicleLink(
-            v.name, v.ports.sysid, v.ports.serial0, v.ports.outputs,
+            v.name, v.ports.sysid, v.ports.serial0, self._link_outputs(v.ports.outputs),
             on_text=lambda name, level, text: self.log(name, text, level),
         )
         await v.link.start()
@@ -515,7 +519,79 @@ class Supervisor:
         for v, ports in zip(self.vehicles, plan.vehicles):
             v.ports.outputs = ports.outputs
             if v.link:
-                await v.link.set_outputs(ports.outputs)
+                await v.link.set_outputs(self._link_outputs(ports.outputs))
+
+    def _link_outputs(self, outputs: list[Endpoint]) -> list[Endpoint]:
+        """The planned outputs plus the map's, which only lives while the map is open."""
+        return outputs + ([self._map_output] if self._map_output else [])
+
+    # --- shared map (MAVProxy) ---------------------------------------------
+
+    @property
+    def map_open(self) -> bool:
+        return bool(self.mavproxy and self.mavproxy.alive)
+
+    async def toggle_map(self) -> bool:
+        """Open or close the shared MAVProxy map + console. Returns True when open."""
+        if self.map_open:
+            await self._close_map()
+            return False
+        if self.state != SimState.RUNNING:
+            raise SupervisorError("start the simulation first")
+        exe = self.settings.mavproxy()
+        if exe is None:
+            raise SupervisorError("MAVProxy is not installed: hangar sources fetch mavproxy")
+        assert self.run_dir
+        port = _free_udp_port()
+        self._map_output = Endpoint("udp", "127.0.0.1", port)
+        state = self.run_dir / "mavproxy"
+        state.mkdir(exist_ok=True)
+        self.mavproxy = ManagedProcess(
+            "mavproxy",
+            [str(exe), f"--master=udpin:127.0.0.1:{port}", "--map", "--console",
+             "--aircraft=hangar", f"--state-basedir={state}"],
+            cwd=state, log_path=self.run_dir / "logs" / "mavproxy.log",
+            on_line=self._mavproxy_line, on_exit=self._map_exited, stdin=True, quit_line="exit",
+        )
+        await self.mavproxy.start()
+        for v in self.vehicles:
+            if v.link:
+                await v.link.set_outputs(self._link_outputs(v.ports.outputs))
+        self.log("mavproxy", f"map and console open, MAVProxy on udp:{port}", "event")
+        return True
+
+    def mavproxy_command(self, sysid: int, command: str) -> None:
+        """Run a MAVProxy command for one vehicle (Hangar's '!command')."""
+        if not self.mavproxy or not self.map_open:
+            raise SupervisorError("open the map first (MAVProxy runs with it)")
+        self.mavproxy.write(f"vehicle {sysid}")
+        self.mavproxy.write(command)
+
+    def _mavproxy_line(self, source: str, text: str) -> None:
+        text = _PROMPTS.sub("", text).strip()
+        if text:
+            self._line(source, text)
+
+    def _map_exited(self, p: ManagedProcess) -> None:
+        if p.state == ProcState.EXITED:
+            self.log("mavproxy", "MAVProxy closed", "event")
+        task = asyncio.create_task(self._drop_map_output())
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+
+    async def _close_map(self) -> None:
+        if self.mavproxy:
+            await self.mavproxy.stop()
+            self.mavproxy = None
+        await self._drop_map_output()
+
+    async def _drop_map_output(self) -> None:
+        if not self._map_output:
+            return
+        self._map_output = None
+        for v in self.vehicles:
+            if v.link:
+                await v.link.set_outputs(self._link_outputs(v.ports.outputs))
 
     async def restart_vehicle(self, name: str) -> None:
         if self.state != SimState.RUNNING:
@@ -546,6 +622,10 @@ class Supervisor:
         self._close_logfile()
 
     async def _teardown(self) -> None:
+        if self.mavproxy:
+            await self.mavproxy.stop()
+            self.mavproxy = None
+            self._map_output = None
         for task in list(self._background):
             task.cancel()
         procs: list[ManagedProcess] = []
@@ -559,6 +639,8 @@ class Supervisor:
             self.gazebo = None
 
     def _kill_all(self) -> None:
+        if self.mavproxy:
+            self.mavproxy.kill_now()
         for v in self.vehicles:
             for p in (v.camera_viewer, v.camera_bridge, v.process):
                 if p:
@@ -578,6 +660,15 @@ class Supervisor:
         if self.vehicles:
             return PortPlan([v.ports for v in self.vehicles])
         return self.preflight(check_ports=False).plan
+
+
+_PROMPTS = re.compile(r"^(?:[A-Z][A-Z0-9_]*> ?)+")  # MAVProxy prompts ("GUIDED> ") glued to its output
+
+
+def _free_udp_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def format_plain(line: LogLine) -> str:

@@ -104,11 +104,11 @@ Terminalden: `hangar logs -f` (canlı), `hangar logs -w` (sadece uyarılar),
 | `1`–`4` | Araç / Günlük / Portlar / Senaryo sekmeleri | `:` | seçili araç için komut satırı |
 | `Esc` | filo tablosuna dön | `F2` | sistem kontrolü |
 | `ctrl+s` / `ctrl+o` | senaryoyu kaydet / aç | `ctrl+p` | komut paleti (temalar dahil) |
-| `q` | çık (simülasyonu durdurur) | | |
+| `m` | ortak harita (MAVProxy) | `q` | çık (simülasyonu durdurur) |
 
 Araç komutları (butonlardan ya da komut satırından): `arm [force]`, `disarm`,
 `mode GUIDED` (ya da sadece `GUIDED`), `takeoff 30`, `rtl`, `land`,
-`param set AD DEĞER`.
+`param set AD DEĞER`; harita açıkken `!<MAVProxy komutu>`.
 
 Arayüz Türkçe ve İngilizce destekler ve dili `$LANG`'a göre seçer. Elle
 ayarlamak için: `hangar config set language tr`.
@@ -171,6 +171,24 @@ Bu yöntem pip'teki `opencv-python` ile de çalışır; o paketin kendi GStreame
 desteği olmasa bile. UDP portunu aynı anda yalnızca bir program okuyabilir.
 Aynı kamerayı birden fazla program okuyacaksa kameraya bir `v4l2_device` ver
 ve o cihazı `cv2.VideoCapture('/dev/video2')` ile aç.
+
+### Ortak harita (MAVProxy)
+
+**Harita** butonu (ya da `m`) MAVProxy'nin haritasını ve konsolunu açar.
+**Tüm araçlar tek haritada** görünür. Hangar boş bir port bulur, bu portu her
+araca geçici bir çıkış olarak ekler ve MAVProxy'yi o porta bağlar. Harita
+kapanınca ya da simülasyon durunca ikisi de kaldırılır; harita için port
+ayarı yapman gerekmez. Komut satırında `!` ile başlayan her şey, seçili araç
+için MAVProxy'ye gider, örneğin `!wp list` ya da `!fence list`. MAVProxy'nin
+cevapları Günlük sekmesinde görünür. Arayüzsüz kullanım:
+`hangar up senaryo.yaml --map`.
+
+MAVProxy isteğe bağlıdır. Harita'ya ilk bastığında Hangar onu kendi
+klasörüne kurmayı önerir: yaklaşık 900 MB (wxPython, OpenCV), sudo gerekmez,
+lisansı GPL-3.0. Kurmanın diğer yolları: `hangar sources fetch mavproxy` ya da
+`install.sh --mavproxy`. Hazır wxPython paketi Ubuntu 22.04/24.04 x86_64 için
+var; başka sistemlerde MAVProxy'yi kendin kurarsan Hangar PATH'teki
+`mavproxy.py`'yi kullanır.
 
 ### Portlar: yer istasyonu ve script bağlamak
 

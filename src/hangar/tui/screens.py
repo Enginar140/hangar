@@ -243,15 +243,17 @@ class PathDialog(_Dialog):
 
 
 class ConfirmDialog(_Dialog):
-    def __init__(self, question: str):
+    def __init__(self, question: str, ok: str | None = None, variant: str = "error"):
         super().__init__()
         self.question = question
+        self.ok = ok or t("OK")
+        self.variant = variant  # "error" for destructive questions, "primary" otherwise
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog narrow"):
             yield Static(self.question, classes="dialog-title")
             with Horizontal(classes="dialog-buttons"):
-                yield Button(t("OK"), variant="error", id="yes")
+                yield Button(self.ok, variant=self.variant, id="yes")
                 yield Button(t("Cancel"), id="no")
 
     def on_mount(self) -> None:
@@ -304,11 +306,12 @@ HELP_TEXT = """\
 
 [b]s[/b] start      [b]x[/b] stop       [b]a[/b] add vehicle   [b]e[/b] edit   [b]d[/b] remove
 [b]ctrl+s[/b] save  [b]ctrl+o[/b] open  [b]F2[/b] doctor       [b]ctrl+p[/b] command palette
-[b]1-4[/b] tabs     [b]:[/b] command line for the selected vehicle   [b]q[/b] quit
+[b]1-4[/b] tabs     [b]:[/b] command line for the selected vehicle   [b]m[/b] shared map   [b]q[/b] quit
 
 Vehicle commands:
   arm [force] · disarm [force] · mode GUIDED (or just GUIDED) · takeoff 30 · rtl · land
   param set NAME VALUE
+  !COMMAND sends a MAVProxy command for the selected vehicle (map open), e.g. !wp list
 
 Every MAVLink output is in the Ports tab. Point QGroundControl or Mission Planner
 at udp 14550 (the default) and all vehicles appear with their own system id.

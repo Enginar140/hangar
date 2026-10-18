@@ -97,6 +97,11 @@ def run_checks(settings: Settings) -> list[Check]:
                   "sudo apt install v4l2loopback-dkms && "
                   "sudo modprobe v4l2loopback video_nr=2 card_label=Hangar exclusive_caps=1"))
 
+    mpx = settings.mavproxy()
+    add(Check("MAVProxy (map)", "ok" if mpx else "warn",
+              str(mpx) if mpx else "not installed (optional: the Map button)",
+              "hangar sources fetch mavproxy   (about 900 MB, no sudo)"))
+
     clip = next((c for c in ("wl-copy", "xclip", "xsel") if shutil.which(c)), None)
     add(Check("Clipboard", "ok" if clip else "warn", clip or "no clipboard tool (Copy buttons need one)",
               "sudo apt install wl-clipboard xclip"))

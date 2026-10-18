@@ -99,6 +99,11 @@ def cmd_up(args, settings: Settings) -> int:
             code = 1
         elif start in done:
             console.print("[green]running[/] — Ctrl+C to stop")
+            if args.map:
+                try:
+                    await sup.toggle_map()
+                except SupervisorError as e:
+                    err.print(f"[yellow]map: {e}[/]")
             while not stop.is_set():
                 try:
                     await asyncio.wait_for(stop.wait(), args.status_every)
@@ -373,6 +378,7 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("--example", choices=EXAMPLES)
     up.add_argument("-v", "--verbose", action="store_true", help="also print raw SITL output")
     up.add_argument("--status-every", type=float, default=10.0, metavar="SEC")
+    up.add_argument("--map", action="store_true", help="also open the shared MAVProxy map and console")
 
     ports = sub.add_parser("ports", help="show the port plan and preflight result")
     ports.add_argument("scenario", nargs="?")

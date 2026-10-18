@@ -8,6 +8,7 @@ without editing this file, and an existing setup can be pointed to with
 
 from __future__ import annotations
 
+import shutil
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -158,6 +159,14 @@ class Settings:
             if d and d.is_dir():
                 return d
         return None
+
+    def mavproxy(self) -> Path | None:
+        """mavproxy.py from `hangar sources fetch mavproxy`, else from PATH."""
+        own = paths.sources_dir() / "tools" / "mavproxy"
+        if (own / ".hangar-fetched").exists() and (own / "bin" / "mavproxy.py").exists():
+            return own / "bin" / "mavproxy.py"
+        found = shutil.which("mavproxy.py")
+        return Path(found) if found else None
 
     def resolved_model_paths(self) -> list[Path]:
         src = paths.sources_dir()

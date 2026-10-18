@@ -104,6 +104,11 @@ TR: dict[str, str] = {
 
 # Long texts are keyed by an ID, so English needs a table too.
 EN: dict[str, str] = {
+    "MAVPROXY_OFFER": (
+        "The map uses MAVProxy, which is not installed yet.\n\n"
+        "Install it now? It goes into Hangar's own folder, needs no sudo, takes about a minute and "
+        "about 900 MB (wxPython, OpenCV). License: {license}."
+    ),
     "PORTS_HELP": (
         "[b]How to connect[/b]\n"
         "• [b]QGroundControl / Mission Planner[/b] listen on udp 14550. All vehicles may share it: "
@@ -116,6 +121,11 @@ EN: dict[str, str] = {
 }
 
 TR.update({
+    "MAVPROXY_OFFER": (
+        "Harita MAVProxy kullanıyor ve henüz kurulu değil.\n\n"
+        "Şimdi kurulsun mu? Hangar'ın kendi klasörüne kurulur, sudo gerekmez. Kurulum yaklaşık bir "
+        "dakika sürer ve yaklaşık 900 MB yer kaplar (wxPython, OpenCV). Lisans: {license}."
+    ),
     "PORTS_HELP": (
         "[b]Nasıl bağlanılır[/b]\n"
         "• [b]QGroundControl / Mission Planner[/b] udp 14550'yi dinler. Tüm araçlar bu portu paylaşabilir: "
@@ -126,6 +136,19 @@ TR.update({
         "{i} her araca kendi portunu verir. Değişiklik simülasyon çalışırken de anında uygulanır."
     ),
     "Quality": "Kalite",
+    "Map": "Harita",
+    "Install": "Kur",
+    "Close map": "Haritayı kapat",
+    "Start the simulation first (s).": "Önce simülasyonu başlat (s).",
+    "Map and console opened: every vehicle is on one map. '!command' in the command line goes to MAVProxy.":
+        "Harita ve konsol açıldı: tüm araçlar tek haritada. Komut satırında '!komut' MAVProxy'ye gider.",
+    "Map closed": "Harita kapatıldı",
+    "Open the map first (m): MAVProxy runs with it.": "Önce haritayı aç (m): MAVProxy onunla çalışır.",
+    "Installing MAVProxy, this takes about a minute...": "MAVProxy kuruluyor, yaklaşık bir dakika sürer...",
+    "MAVProxy install failed": "MAVProxy kurulamadı",
+    "MAVProxy installed.": "MAVProxy kuruldu.",
+    "Command: arm, disarm, mode GUIDED, takeoff 30, rtl, land, param set NAME VALUE, !MAVPROXY COMMAND":
+        "Komut: arm, disarm, mode GUIDED, takeoff 30, rtl, land, param set AD DEĞER, !MAVPROXY KOMUTU",
     "Open folder": "Klasörü aç",
     "lines": "satır",
     "Save the log shown (with the current filter)": "Görünen logu kaydet (mevcut filtreyle)",

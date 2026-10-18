@@ -64,3 +64,21 @@ sitl_models:
   license: not specified by the repository (check each model before redistributing it)
   required: false
   purpose: Ready-made Gazebo planes, copters, rovers, boats and worlds.
+
+mavproxy:
+  title: MAVProxy (shared map and console)
+  kind: python
+  url: https://github.com/ArduPilot/MAVProxy
+  ref: "1.8.75"
+  dir: tools/mavproxy
+  license: GPL-3.0
+  required: false
+  purpose: The map with every vehicle on it, MAVProxy's console and its commands (the Map button,
+    and '!command' in Hangar's command line). Installs into its own environment, about 900 MB
+    (wxPython, OpenCV); no sudo.
+  packages:
+    # MAVProxy itself without its dependencies: they would pull VTK (~500 MB, only for the 3D map)
+    nodeps: ["MAVProxy==1.8.75"]
+    deps: [pymavlink, defusedxml, pyserial, numpy, pynmeagps, opencv-python, matplotlib, Pillow]
+    # wxPython has no Linux wheels on PyPI; its project publishes them per Ubuntu release
+    wxpython: https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-{ubuntu}/wxPython-4.2.2-{py}-{py}-linux_x86_64.whl

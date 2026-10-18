@@ -27,7 +27,7 @@ TabPane {
 
 #vehicle-top {
     height: auto;
-    max-height: 16;
+    max-height: 20;
 }
 
 #telemetry {

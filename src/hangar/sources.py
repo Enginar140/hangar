@@ -36,8 +36,9 @@ class Source:
     required: bool = False
     submodules: bool = False
     dir: str = ""
-    kind: str = "git"  # git | download
+    kind: str = "git"  # git | download | python
     files: dict[str, str] = field(default_factory=dict)  # download: relative path -> URL
+    packages: dict = field(default_factory=dict)  # python: nodeps / deps / wxpython
     build: dict = field(default_factory=dict)
 
     @property
@@ -85,7 +86,76 @@ def fetch(source: Source) -> str:
     """Download ``source`` at its pinned version. Returns the commit or version."""
     if source.kind == "download":
         return _download(source)
+    if source.kind == "python":
+        return _python_env(source)
     return _clone(source)
+
+
+PYTHON = "3.12"
+
+
+def find_uv() -> str | None:
+    return shutil.which("uv") or next(
+        (str(p) for p in (Path.home() / ".local/bin/uv", Path.home() / ".cargo/bin/uv") if p.exists()), None
+    )
+
+
+def ubuntu_release() -> str | None:
+    try:
+        info = dict(
+            line.split("=", 1) for line in Path("/etc/os-release").read_text().splitlines() if "=" in line
+        )
+    except OSError:
+        return None
+    if info.get("ID") != "ubuntu":
+        return None
+    return info.get("VERSION_ID", "").strip('"') or None
+
+
+def python_env_commands(source: Source, uv: str, venv: Path, ubuntu: str | None, machine: str) -> list[list[str]]:
+    """The uv commands that build a tool's own environment (kept pure for tests)."""
+    pk = source.packages
+    py = "cp" + PYTHON.replace(".", "")
+    target = ["--python", str(venv / "bin" / "python")]
+    cmds = [[uv, "venv", "--quiet", "--python", PYTHON, str(venv)]]
+    if pk.get("nodeps"):
+        cmds.append([uv, "pip", "install", "--quiet", *target, "--no-deps", *pk["nodeps"]])
+    deps = list(pk.get("deps", []))
+    if pk.get("wxpython"):
+        if ubuntu in ("22.04", "24.04") and machine == "x86_64":
+            deps.append("wxPython @ " + pk["wxpython"].format(ubuntu=ubuntu, py=py))
+        else:
+            raise RuntimeError(
+                "a ready-made wxPython exists only for Ubuntu 22.04/24.04 on x86_64. Elsewhere install "
+                "MAVProxy yourself (see ardupilot.org/mavproxy, 'Download and Installation') and Hangar "
+                "will use mavproxy.py from your PATH"
+            )
+    if deps:
+        cmds.append([uv, "pip", "install", "--quiet", *target, *deps])
+    return cmds
+
+
+def _python_env(source: Source, progress=print) -> str:
+    """Build the tool's own environment in place (a venv cannot be moved later);
+    a failed build is removed, and only a finished one gets the marker file."""
+    uv = find_uv()
+    if not uv:
+        raise RuntimeError("uv is required: curl -LsSf https://astral.sh/uv/install.sh | sh")
+    dest = source.path
+    commands = python_env_commands(source, uv, dest, ubuntu_release(), platform.machine())
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        for argv in commands:
+            progress("  $ uv " + " ".join(argv[1:]))
+            subprocess.run(argv, check=True)
+    except BaseException:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
+    (dest / ".hangar-fetched").write_text(source.ref, encoding="utf-8")
+    _write_lock(source, source.ref, {"python": PYTHON})
+    return source.ref
 
 
 def _download(source: Source, progress=print) -> str:

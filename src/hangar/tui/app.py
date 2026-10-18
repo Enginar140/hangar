@@ -8,6 +8,7 @@ workers, so the interface never blocks while SITLs and Gazebo start.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime
 from pathlib import Path
@@ -97,6 +98,7 @@ class HangarApp(App):
         Binding("ctrl+o", "open", t("Open")),
         Binding("f2", "doctor", t("Doctor")),
         Binding("f1,question_mark", "help", t("Help")),
+        Binding("m", "map", t("Map")),
         Binding("q", "quit", t("Quit")),
         Binding("colon", "command_line", show=False),
         Binding("escape", "focus_fleet", show=False),
@@ -156,9 +158,11 @@ class HangarApp(App):
                         yield Select([], prompt=t("Set mode"), id="mode", compact=True)
                         with Horizontal(classes="row"):
                             yield Button(t("Camera"), id="camera")
+                            yield Button(t("Map"), id="map", variant="primary")
+                        with Horizontal(classes="row"):
                             yield Button(t("Restart"), id="restart", variant="warning")
                 yield Input(placeholder=t("Command: arm, disarm, mode GUIDED, takeoff 30, rtl, land, "
-                                          "param set NAME VALUE"), id="command")
+                                          "param set NAME VALUE, !MAVPROXY COMMAND"), id="command")
                 yield RichLog(id="vehicle-log", markup=True, wrap=True, max_lines=2000)
             with TabPane(t("Logs"), id="tab-logs"):
                 with Horizontal(id="log-bar"):
@@ -226,6 +230,7 @@ class HangarApp(App):
         self._refresh_fleet()
         self._refresh_status()
         self._refresh_vehicle_panel()
+        self._refresh_map_button()
 
     def _refresh_all(self) -> None:
         self._refresh_fleet()
@@ -455,8 +460,12 @@ class HangarApp(App):
         for w in self._main.query("#scenario-form Input, #scenario-form Select, #scenario-form Switch"):
             w.disabled = not editable
         running = self.supervisor.state == SimState.RUNNING
-        for bid in ("arm", "disarm", "takeoff", "rtl", "land", "camera", "restart", "mode", "command"):
+        for bid in ("arm", "disarm", "takeoff", "rtl", "land", "camera", "map", "restart", "mode", "command"):
             self._main.query_one(f"#{bid}").disabled = not running
+        self._refresh_map_button()
+
+    def _refresh_map_button(self) -> None:
+        self._main.query_one("#map", Button).label = t("Close map") if self.supervisor.map_open else t("Map")
 
     # --- logs ------------------------------------------------------------
 
@@ -691,6 +700,57 @@ class HangarApp(App):
             return
         self.push_screen(CameraScreen(self.supervisor, rt.name))
 
+    @on(Button.Pressed, "#map")
+    def _map_button(self) -> None:
+        self.action_map()
+
+    def action_map(self) -> None:
+        if self.supervisor.state != SimState.RUNNING and not self.supervisor.map_open:
+            self.notify(t("Start the simulation first (s)."), severity="warning")
+            return
+        if self.settings.mavproxy() is None:
+            self._offer_mavproxy()
+            return
+        self._map_worker()
+
+    @work(exclusive=True, group="map")
+    async def _map_worker(self) -> None:
+        try:
+            opened = await self.supervisor.toggle_map()
+        except SupervisorError as e:
+            self.notify(str(e), severity="error", timeout=8)
+            return
+        self._refresh_map_button()
+        self.notify(t("Map and console opened: every vehicle is on one map. '!command' in the command line "
+                      "goes to MAVProxy.") if opened else t("Map closed"), timeout=6)
+
+    @work(exclusive=True, group="map")
+    async def _offer_mavproxy(self) -> None:
+        from .. import sources
+
+        src = sources.load_manifest()["mavproxy"]
+        question = t("MAVPROXY_OFFER").replace("{license}", src.license)
+        if not await self.push_screen_wait(ConfirmDialog(question, ok=t("Install"), variant="primary")):
+            return
+        self.notify(t("Installing MAVProxy, this takes about a minute..."), timeout=8)
+        self.supervisor.log("hangar", f"installing {src.title} into {src.path}", "event")
+
+        def install() -> None:
+            sources._python_env(src, progress=lambda line: self.call_from_thread(
+                self.supervisor.log, "hangar", line, "info"))
+
+        try:
+            await asyncio.to_thread(install)
+        except Exception as e:  # noqa: BLE001 - show any failure to the user
+            self.supervisor.log("hangar", f"MAVProxy install failed: {e}", "error")
+            self.notify(f"{t('MAVProxy install failed')}: {e}", severity="error", timeout=10)
+            return
+        self.supervisor.log("hangar", "MAVProxy installed", "event")
+        if self.supervisor.state == SimState.RUNNING:
+            self._map_worker()
+        else:
+            self.notify(t("MAVProxy installed."))
+
     # --- outputs (Ports tab) ---------------------------------------------------
 
     @on(Button.Pressed, "#out-add")
@@ -738,6 +798,18 @@ class HangarApp(App):
     def _command(self, event: Input.Submitted) -> None:
         line = event.value.strip()
         event.input.value = ""
+        if line.startswith("!"):
+            rt = self._runtime(self.selected)
+            if not rt:
+                self.notify(t("Select a vehicle in the fleet table."), severity="warning")
+                return
+            try:
+                self.supervisor.mavproxy_command(rt.ports.sysid, line[1:].strip())
+                self.supervisor.log("mavproxy", f"{rt.name}> {line[1:].strip()}", "event")
+            except SupervisorError as e:
+                self.notify(t("Open the map first (m): MAVProxy runs with it."), severity="warning")
+                self.supervisor.log("mavproxy", str(e), "warning")
+            return
         if line and (link := self._selected_link()):
             self.supervisor.log(self.selected or "hangar", f"> {line}", "event")
             self._vehicle_command(line.split()[0], link.run(line))
@@ -886,3 +958,4 @@ class HangarApp(App):
         yield SystemCommand(f"Hangar: {t('Save')}", "Save the scenario to a file", self.action_save)
         yield SystemCommand(f"Hangar: {t('Open')}", "Open a scenario file", self.action_open)
         yield SystemCommand(f"Hangar: {t('Doctor')}", "Check the installation", self.action_doctor)
+        yield SystemCommand(f"Hangar: {t('Map')}", "Open or close the shared MAVProxy map", self.action_map)

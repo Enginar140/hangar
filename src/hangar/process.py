@@ -38,6 +38,8 @@ class ManagedProcess:
         log_path: Path | None = None,
         on_line: LineCallback | None = None,
         on_exit: ExitCallback | None = None,
+        stdin: bool = False,
+        quit_line: str | None = None,
     ):
         self.name = name
         self.argv = argv
@@ -46,6 +48,8 @@ class ManagedProcess:
         self.log_path = log_path
         self.on_line = on_line
         self.on_exit = on_exit
+        self.stdin = stdin
+        self.quit_line = quit_line  # written to stdin to ask for a clean exit
         self.state = ProcState.IDLE
         self.returncode: int | None = None
         self._proc: asyncio.subprocess.Process | None = None
@@ -69,7 +73,7 @@ class ManagedProcess:
                 *self.argv,
                 cwd=self.cwd,
                 env=self.env,
-                stdin=asyncio.subprocess.DEVNULL,
+                stdin=asyncio.subprocess.PIPE if self.stdin else asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 start_new_session=True,
@@ -117,10 +121,24 @@ class ManagedProcess:
         if self.on_exit:
             self.on_exit(self)
 
+    def write(self, line: str) -> bool:
+        """Send a line to the process's stdin (it must be started with stdin=True)."""
+        running = self.state in (ProcState.RUNNING, ProcState.STOPPING)
+        if not running or not self._proc or not self._proc.stdin or self._proc.stdin.is_closing():
+            return False
+        self._proc.stdin.write(line.rstrip("\n").encode() + b"\n")
+        return True
+
     async def stop(self, timeout: float = 5.0) -> None:
         if not self._proc or self.state not in (ProcState.RUNNING, ProcState.STOPPING):
             return
         self.state = ProcState.STOPPING
+        if self.quit_line and self.write(self.quit_line):
+            try:
+                await asyncio.wait_for(asyncio.shield(self._tasks[1]), 3.0)
+                return
+            except TimeoutError:
+                pass
         self._signal(signal.SIGINT)  # lets SITL / Gazebo shut down cleanly
         try:
             await asyncio.wait_for(asyncio.shield(self._tasks[1]), timeout)
