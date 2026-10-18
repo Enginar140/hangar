@@ -254,6 +254,9 @@ uv run pytest
 uv run hangar
 ```
 
+Releases are automated: bump `__version__`, add a CHANGELOG section, push a
+`vX.Y.Z` tag. See [docs/RELEASING.md](docs/RELEASING.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

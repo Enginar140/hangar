@@ -1,0 +1,64 @@
+name: release
+
+# Push a tag like v0.2.0 (or v0.2.0-rc1 for a pre-release) to publish a GitHub release.
+# "Run workflow" in the Actions tab does a dry run: everything except publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to check, e.g. v0.2.0 (dry run: builds, does not publish)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      PUBLISH: ${{ github.event_name == 'push' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+
+      - name: Version and changelog match the tag
+        run: python3 scripts/release.py check "$TAG"
+
+      - name: Lint and test
+        run: |
+          uv sync --python 3.12
+          uv run ruff check src tests examples scripts
+          uv run pytest -q
+
+      - name: Build
+        run: |
+          uv build -o dist
+          rm -f dist/.gitignore
+          (cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS)
+          python3 scripts/release.py notes "$TAG" > dist/NOTES.md
+
+      - name: Keep the files of a dry run
+        if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ env.TAG }}-dry-run
+          path: dist/
+
+      - name: Publish the GitHub release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$TAG" in *-*|*a[0-9]*|*b[0-9]*|*rc[0-9]*) prerelease="--prerelease" ;; esac
+          assets=(dist/*.whl dist/*.tar.gz dist/SHA256SUMS)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG exists; replacing its files"
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" --verify-tag $prerelease \
+              --title "Hangar ${TAG#v}" --notes-file dist/NOTES.md
+          fi
