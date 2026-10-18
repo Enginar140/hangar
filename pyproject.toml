@@ -47,3 +47,6 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "UP"]
 ignore = ["B905"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["docs/images", "docs/screenshots", ".github"]
