@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from hangar.catalog import Catalog
 from hangar.ports import PortPlan
@@ -63,3 +64,22 @@ def test_world_builder(settings, tmp_path):
     assert ET.parse(second / "model.config").getroot().findtext("name") == "testplane_2"
     # originals untouched
     assert "9002" in (settings.resolved_model_paths()[0] / "testplane" / "model.sdf").read_text()
+
+
+def test_gazebo_finds_the_generated_models(settings, tmp_path):
+    """Resolve every model:// include the way gz does: through GZ_SIM_RESOURCE_PATH."""
+    from hangar.supervisor import Supervisor
+
+    cat = Catalog(settings)
+    sc = Scenario.model_validate({"world": "runway", "vehicles": [{"model": "testplane", "name": "sky"}]})
+    sup = Supervisor(sc, settings, cat)
+    sup.run_dir = tmp_path / "run"
+    plan = sup.preflight(check_ports=False).plan
+    vehicles = [WorldVehicle(cat.get("testplane"), plan.vehicles[0], sc.vehicles[0].pose_sdf)]
+    out = build_world(cat.worlds["runway"].path, vehicles, sup.world_dir(),
+                      {n for n, m in cat.vehicles.items() if m.needs_gazebo})
+
+    search = [p for p in sup.gazebo_env()["GZ_SIM_RESOURCE_PATH"].split(":") if p]
+    for inc in ET.parse(out).getroot().iter("include"):
+        name = inc.findtext("uri").removeprefix("model://")
+        assert any((Path(d) / name / "model.sdf").exists() for d in search), f"gz cannot find {name}"

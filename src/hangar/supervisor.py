@@ -249,19 +249,25 @@ class Supervisor:
         self._set_state(SimState.RUNNING)
         self.log("hangar", f"{len(self.vehicles)} vehicle(s) running", "event")
 
-        results = await asyncio.gather(*(v.link.wait_connected(LINK_TIMEOUT) for v in self.vehicles if v.link))
-        if not all(results):
-            self.log("hangar", "some vehicles did not send a heartbeat yet", "warning")
-        if self.uses_gazebo:
+        if self.uses_gazebo:  # cameras only need Gazebo, not the autopilots
             for v in self.vehicles:
                 if v.ports.camera:
                     task = asyncio.create_task(self._start_camera(v))
                     self._background.add(task)
                     task.add_done_callback(self._background.discard)
 
+        results = await asyncio.gather(*(v.link.wait_connected(LINK_TIMEOUT) for v in self.vehicles if v.link))
+        if not all(results):
+            self.log("hangar", "some vehicles did not send a heartbeat yet", "warning")
+
+    def world_dir(self) -> Path:
+        """Where the generated world and its per-vehicle models (``models/``) go."""
+        assert self.run_dir
+        return self.run_dir / "world"
+
     def gazebo_env(self) -> dict[str, str]:
         env = dict(os.environ)
-        res = [self.run_dir / "models"] if self.run_dir else []
+        res = [self.world_dir() / "models"] if self.run_dir else []
         res += self.settings.resolved_model_paths() + self.settings.resolved_world_paths()
         res += self.settings.resolved_resource_paths()
         env["GZ_SIM_RESOURCE_PATH"] = _join_paths(res, env.get("GZ_SIM_RESOURCE_PATH"))
@@ -278,7 +284,7 @@ class Supervisor:
         ]
         ardupilot_models = {n for n, m in self.catalog.vehicles.items() if m.needs_gazebo}
         world_file = await asyncio.to_thread(
-            build_world, world.path, gz_vehicles, self.run_dir / "world", ardupilot_models
+            build_world, world.path, gz_vehicles, self.world_dir(), ardupilot_models
         )
         self.log("hangar", f"world generated: {world_file}", "event")
 
@@ -361,6 +367,7 @@ class Supervisor:
             self.log(v.name, f"SITL exited unexpectedly (code {p.returncode}), see {p.log_path}", "error")
 
     async def _start_camera(self, v: VehicleRuntime) -> None:
+        self.log(v.name, "camera: enabling stream", "event")
         topic = await camera.enable_streaming(v.name, self._env)
         if not topic:
             self.log(v.name, "camera: enable topic not found", "warning")
