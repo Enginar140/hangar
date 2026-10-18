@@ -159,6 +159,31 @@ In the UI, the vehicle dialog sets the quality (low/medium/high/custom
 resolution), FPS, field of view and direction. The encoder bitrate is fixed at
 800 kbit/s by ArduPilot's camera plugin.
 
+**Streaming to other devices.** A camera can send its stream to other
+machines on the network, such as a Jetson running your vision code or a
+laptop with QGroundControl. There are two modes:
+
+```yaml
+    camera:
+      stream: relay                     # default: Hangar copies the stream
+      outputs: ["10.205.218.120:5600", "192.168.1.50:{5600+i}", "239.0.0.1:5600"]
+```
+
+- `relay` (default): the camera sends to Hangar, which copies every packet,
+  untouched, to this computer (`udp 5600 + index`) **and** every address in
+  `outputs`. There is no re-encoding, so nothing is added to latency or lost in
+  quality. Outputs can be added and removed in the Ports tab (**Camera
+  outputs**) while running.
+- `direct`: the camera plugin sends straight to its one address in `outputs`,
+  with no relay in between, but this computer gets nothing. Changes apply on
+  the next start.
+
+A multicast address (`239.x.x.x`) reaches every device on the network at once.
+On the receiving side, QGroundControl shows it under Video › UDP h.264 with
+the port, and the code from the Camera window works there with that port. The
+receiver's firewall must allow the port, e.g. `sudo ufw allow 5600/udp`. The
+stream is not encrypted.
+
 **Using the camera from Python.** The Camera button opens a window with
 ready-to-paste code for that camera's port: Python with numpy/OpenCV, OpenCV's
 GStreamer backend, the v4l2 device, or a `gst-launch` command. It can also save
@@ -221,7 +246,8 @@ ArduPilot shifts every port by `10 × instance`, and Hangar follows that:
 | MAVLink (SITL serial0, Hangar connects) | tcp 5760 | tcp 5770 | 5760 + 10*i* |
 | Script ports (this vehicle only) | tcp 5762, 5763 | tcp 5772, 5773 | 5762 + 10*i*, 5763 + 10*i* |
 | Gazebo ↔ SITL (JSON) | udp 9002 | udp 9012 | 9002 + 10*i* |
-| Camera (RTP H.264) | udp 5600 | udp 5601 | 5600 + *i* |
+| Camera, this computer (RTP H.264) | udp 5600 | udp 5601 | 5600 + *i* |
+| Camera, plugin → Hangar relay | udp 5700 | udp 5701 | 5700 + *i* |
 | MAVLink system id | 1 | 2 | *i* + 1 |
 
 ## Adding your own vehicle

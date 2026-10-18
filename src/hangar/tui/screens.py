@@ -30,6 +30,10 @@ DIRECTION_POSES: dict[str, list[float] | None] = {
     "forward": None,  # the model's nose position (vehicles.yaml) or the default
     "down": [0.0, 0.0, -0.05, 0.0, 90.0, 0.0],
 }
+STREAM_OPTIONS = [
+    (t("via Hangar: this computer + every address below"), "relay"),
+    (t("direct: the camera sends to one address only"), "direct"),
+]
 DIRECTION_OPTIONS = [(t("ahead"), "forward"), (t("down"), "down"), (t("as in YAML"), "keep")]
 
 
@@ -102,6 +106,12 @@ class VehicleEditor(_Dialog):
                 yield Label(t("Looks"))
                 yield Select(DIRECTION_OPTIONS, id="cam-dir", allow_blank=False, compact=True,
                              value=_direction_of(cam.pose))
+            with Horizontal(classes="field-row cam-field"):
+                yield Label(t("Stream"))
+                yield Select(STREAM_OPTIONS, id="cam-stream", allow_blank=False, compact=True, value=cam.stream)
+            yield Label(t("Also send to (host:port, comma separated)"), classes="cam-field")
+            yield Input(", ".join(cam.outputs), placeholder="10.0.0.5:5600, 192.168.1.20:{5600+i}",
+                        id="cam-outputs", classes="cam-field")
             yield Label(t("Camera to v4l2 device (optional)"))
             yield Input(cam.v4l2_device or "", placeholder="/dev/video2", id="v4l2")
             with Horizontal(classes="dialog-buttons"):
@@ -132,7 +142,7 @@ class VehicleEditor(_Dialog):
     @on(Switch.Changed, "#camera")
     def _sync_camera_fields(self) -> None:
         on = self.query_one("#camera", Switch).value and not self.query_one("#camera", Switch).disabled
-        for w in self.query(".cam-field Input, .cam-field Select, #v4l2"):
+        for w in self.query(".cam-field Input, .cam-field Select, Input.cam-field, #v4l2"):
             w.disabled = not on
         m = self._model()
         if on and m and m.has_camera:  # the model's own camera stays where it is
@@ -202,9 +212,12 @@ class VehicleEditor(_Dialog):
         if on and m and m.needs_gazebo:
             direction = self.query_one("#cam-dir", Select).value
             pose = base.pose if direction == "keep" else DIRECTION_POSES.get(str(direction))
+            outputs = [o.strip() for o in self.query_one("#cam-outputs", Input).value.split(",") if o.strip()]
             return CameraSpec.model_validate({
                 **base.model_dump(exclude={"pose"}),
                 "enabled": True,
+                "stream": str(self.query_one("#cam-stream", Select).value),
+                "outputs": outputs,
                 "v4l2_device": device,
                 "width": int(self.query_one("#cam-w", Input).value),
                 "height": int(self.query_one("#cam-h", Input).value),
@@ -455,13 +468,21 @@ class CameraScreen(_Dialog):
         info = self.supervisor.camera_info(self.vehicle)
         state = "[green]● streaming[/]" if info["streaming"] else "[yellow]● starting[/]"
         dev = f"   v4l2: [b]{escape(info['device'])}[/b]" if info["device"] else ""
-        note = t("One program at a time can read the UDP port. With a v4l2 device the bridge reads it, "
-                 "so read the device instead; many programs can.") if info["device"] else \
-            t("One program at a time can read the UDP port. Need more? Set a v4l2 device for this camera.")
+        if info["mode"] == "direct":
+            where = f"{t('direct to')} [b]{escape(info['targets'][0])}[/b]"
+            note = t("Direct mode: the camera sends only to that address. Run the code below on that device.")
+        else:
+            where = f"udp:[b]{info['port']}[/b]" + "".join(f" → [b]{escape(x)}[/b]" for x in info["targets"])
+            note = t("One program at a time can read the UDP port. With a v4l2 device the bridge reads it, "
+                     "so read the device instead; many programs can.") if info["device"] else \
+                t("One program at a time can read the UDP port. Need more? Set a v4l2 device for this camera.")
+            if info["targets"]:
+                note += " " + t("The other addresses get the same stream; the code works there with their port.")
         self.query_one("#cam-info", Static).update(
-            f"{state}   udp:[b]{info['port']}[/b]   {info['width']}×{info['height']} @ {info['fps']} fps   "
+            f"{state}   {where}   {info['width']}×{info['height']} @ {info['fps']} fps   "
             f"H.264 / RTP{dev}\n[dim]{escape(note)}[/]"
         )
+        self.query_one("#viewer", Button).disabled = info["mode"] == "direct"
         key = str(self.query_one("#snippet", Select).value)
         lang = "python" if key in ("python", "opencv-gstreamer", "v4l2") else "bash"
         self.query_one("#snippet-code", Static).update(highlight(info["usage"][key], lang))
@@ -532,3 +553,69 @@ def copy_text(text: str) -> bool:
             except (OSError, subprocess.SubprocessError):
                 continue
     return False
+
+
+class CameraOutputDialog(_Dialog):
+    """Add an address a camera stream is copied to. Returns (vehicle, target)."""
+
+    def __init__(self, supervisor, vehicles: list[str]):
+        super().__init__()
+        self.supervisor = supervisor
+        self.vehicles = vehicles  # vehicles whose camera streams through Hangar
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(classes="dialog compact"):
+            yield Label(t("Send a camera to another device"), classes="dialog-title")
+            yield Label(t("Camera of"))
+            yield Select([(n, n) for n in self.vehicles], id="cam-vehicle", allow_blank=False,
+                         value=self.vehicles[0], compact=True)
+            with Horizontal(classes="field-row"):
+                yield Label(t("Address"))
+                yield Input("", placeholder="10.205.218.120", id="host", compact=True)
+                yield Label(t("Port"))
+                yield Input("5600", id="port", compact=True)
+            yield Static(t("CAMERA_OUTPUT_HELP"), classes="hint-text")
+            yield Static(id="preview")
+            with Horizontal(classes="dialog-buttons"):
+                yield Button(t("Add"), variant="primary", id="ok")
+                yield Button(t("Cancel"), id="cancel")
+
+    def on_mount(self) -> None:
+        self._validate()
+        self.query_one("#host", Input).focus()
+
+    def _target(self) -> str:
+        return f"{self.query_one('#host', Input).value.strip()}:{self.query_one('#port', Input).value.strip()}"
+
+    @on(Select.Changed)
+    @on(Input.Changed)
+    def _validate(self) -> bool:
+        from ..ports import Endpoint, PlanError, expand_template
+
+        name = str(self.query_one("#cam-vehicle", Select).value)
+        host = self.query_one("#host", Input).value.strip()
+        lines: list[str] = []
+        ok = bool(host)
+        if host:
+            index = next(i for i, v in enumerate(self.supervisor.scenario.vehicles) if v.name == name)
+            try:
+                ep = Endpoint.parse("udp:" + expand_template(self._target(), index, index + 1))
+                lines.append(f"  {escape(name)} → [b]{escape(ep.host)}:{ep.port}[/b]")
+                problems = self.supervisor.check_camera_output(name, self._target())
+                lines += [f"[red]✗ {escape(p)}[/]" for p in problems]
+                ok = not problems
+            except PlanError as e:
+                lines.append(f"[red]✗ {escape(str(e))}[/]")
+                ok = False
+        self.query_one("#preview", Static).update("\n".join(lines))
+        self.query_one("#ok", Button).disabled = not ok
+        return ok
+
+    @on(Button.Pressed, "#cancel")
+    def _cancel(self) -> None:
+        self.dismiss(None)
+
+    @on(Button.Pressed, "#ok")
+    def _ok(self) -> None:
+        if self._validate():
+            self.dismiss((str(self.query_one("#cam-vehicle", Select).value), self._target()))

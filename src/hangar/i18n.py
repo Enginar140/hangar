@@ -104,6 +104,12 @@ TR: dict[str, str] = {
 
 # Long texts are keyed by an ID, so English needs a table too.
 EN: dict[str, str] = {
+    "CAMERA_OUTPUT_HELP": (
+        "The IP address of the receiving device (find it there with 'hostname -I'). A multicast address "
+        "such as 239.0.0.1 reaches every device on the network. {i} in the port is the vehicle number. "
+        "On the receiver: QGroundControl > Video > UDP h.264 with this port, or the code in the Camera window. "
+        "Its firewall must allow the port (Ubuntu: sudo ufw allow 5600/udp)."
+    ),
     "MAVPROXY_OFFER": (
         "The map uses MAVProxy, which is not installed yet.\n\n"
         "Install it now? It goes into Hangar's own folder, needs no sudo, takes about a minute and "
@@ -121,6 +127,12 @@ EN: dict[str, str] = {
 }
 
 TR.update({
+    "CAMERA_OUTPUT_HELP": (
+        "Alıcı cihazın IP adresi (o cihazda 'hostname -I' ile bulunur). 239.0.0.1 gibi bir multicast adres "
+        "ağdaki tüm cihazlara ulaşır. Porttaki {i} araç numarasıdır. Alıcıda: QGroundControl > Video > "
+        "UDP h.264 ve bu port, ya da Kamera penceresindeki kod. Alıcının güvenlik duvarı bu porta izin "
+        "vermeli (Ubuntu: sudo ufw allow 5600/udp)."
+    ),
     "MAVPROXY_OFFER": (
         "Harita MAVProxy kullanıyor ve henüz kurulu değil.\n\n"
         "Şimdi kurulsun mu? Hangar'ın kendi klasörüne kurulur, sudo gerekmez. Kurulum yaklaşık bir "
@@ -136,6 +148,28 @@ TR.update({
         "{i} her araca kendi portunu verir. Değişiklik simülasyon çalışırken de anında uygulanır."
     ),
     "Quality": "Kalite",
+    "Stream": "Yayın",
+    "via Hangar: this computer + every address below": "Hangar üzerinden: bu bilgisayar + aşağıdaki adresler",
+    "direct: the camera sends to one address only": "doğrudan: kamera sadece tek adrese gönderir",
+    "Also send to (host:port, comma separated)": "Ayrıca gönder (adres:port, virgülle)",
+    "direct, not to this computer": "doğrudan, bu bilgisayara değil",
+    "direct to": "doğrudan:",
+    "Direct mode: the camera sends only to that address. Run the code below on that device.":
+        "Doğrudan mod: kamera sadece o adrese gönderir. Aşağıdaki kodu o cihazda çalıştır.",
+    "The other addresses get the same stream; the code works there with their port.":
+        "Diğer adresler aynı yayını alır; kod oralarda kendi portuyla çalışır.",
+    "Camera outputs": "Görüntü çıkışları",
+    "Send to a device": "Cihaza gönder",
+    "Goes to": "Gidiyor",
+    "this computer": "bu bilgisayar",
+    "Send a camera to another device": "Kamerayı başka bir cihaza gönder",
+    "Camera of": "Hangi aracın kamerası",
+    "No camera streams through Hangar. Edit a vehicle (e), switch its camera on.":
+        "Hangar üzerinden yayın yapan kamera yok. Bir aracı düzenle (e) ve kamerasını aç.",
+    "This computer always gets a relayed camera.": "Hangar üzerinden yayında bu bilgisayar her zaman alır.",
+    "A direct camera needs its one address; edit the vehicle (e) to change it.":
+        "Doğrudan moddaki kameranın tek adresi var; değiştirmek için aracı düzenle (e).",
+    "on the next start": "bir sonraki başlatmada",
     "Map": "Harita",
     "Install": "Kur",
     "Close map": "Haritayı kapat",

@@ -23,7 +23,8 @@ SERIAL0_BASE = 5760  # MAVLink TCP, Hangar's router connects here
 SERIAL1_BASE = 5762
 SERIAL2_BASE = 5763
 FDM_BASE = 9002  # SITL <-> Gazebo JSON physics
-CAMERA_BASE = 5600
+CAMERA_BASE = 5600  # where this computer's readers get a camera (viewer, Python, v4l2)
+CAMERA_RELAY_BASE = 5700  # where the camera plugin sends when Hangar relays the stream
 
 EndpointKind = Literal["udp", "udpin", "tcpin"]
 _TEMPLATE = re.compile(r"\{([^{}]+)\}")
@@ -104,8 +105,15 @@ class VehiclePorts:
     sysid: int
     serial0: int
     fdm: int | None
-    camera: int | None
+    camera: int | None  # local delivery port for this computer's readers (relay mode only)
     outputs: list[Endpoint] = field(default_factory=list)
+    camera_mode: str | None = None  # "relay" | "direct" | None (no camera)
+    camera_send: Endpoint | None = None  # where the camera plugin itself sends
+    camera_targets: list[Endpoint] = field(default_factory=list)  # other machines / ports
+
+    @property
+    def has_camera(self) -> bool:
+        return self.camera_mode is not None
 
     @property
     def serial1(self) -> int:
@@ -140,17 +148,26 @@ class PortPlan:
                 ep = Endpoint.parse(expand_template(u, i, sysid))
                 if ep not in endpoints:
                     endpoints.append(ep)
-            out.append(
-                VehiclePorts(
-                    index=i,
-                    name=name,
-                    sysid=sysid,
-                    serial0=SERIAL0_BASE + STRIDE * i,
-                    fdm=FDM_BASE + STRIDE * i if gazebo.get(name) else None,
-                    camera=CAMERA_BASE + i if cameras.get(name) else None,
-                    outputs=endpoints,
-                )
+            vp = VehiclePorts(
+                index=i,
+                name=name,
+                sysid=sysid,
+                serial0=SERIAL0_BASE + STRIDE * i,
+                fdm=FDM_BASE + STRIDE * i if gazebo.get(name) else None,
+                camera=None,
+                outputs=endpoints,
             )
+            if cameras.get(name):
+                cam = v.camera
+                targets = [Endpoint.parse("udp:" + expand_template(t, i, sysid)) for t in (cam.outputs if cam else [])]
+                if cam and cam.stream == "direct":
+                    vp.camera_mode, vp.camera_send, vp.camera_targets = "direct", targets[0], targets
+                else:
+                    vp.camera_mode = "relay"
+                    vp.camera = CAMERA_BASE + i
+                    vp.camera_send = Endpoint("udp", "127.0.0.1", CAMERA_RELAY_BASE + i)
+                    vp.camera_targets = [t for t in targets if t != Endpoint("udp", "127.0.0.1", vp.camera)]
+            out.append(vp)
         return cls(out)
 
     def bindings(self) -> list[Binding]:
@@ -164,8 +181,12 @@ class PortPlan:
             ]
             if v.fdm:
                 b.append(Binding("udp", v.fdm, f"{v.name} Gazebo"))
-            if v.camera:
+            if v.camera_mode == "relay":
+                b.append(Binding("udp", v.camera_send.port, f"{v.name} camera relay"))
                 b.append(Binding("udp", v.camera, f"{v.name} camera"))
+            for t in v.camera_targets:
+                if _is_local(t.host):  # a reader on this computer will bind it
+                    b.append(Binding("udp", t.port, f"{v.name} camera output"))
             for ep in v.outputs:
                 if ep.binds_locally:
                     proto = "tcp" if ep.kind == "tcpin" else "udp"
@@ -195,7 +216,7 @@ class PortPlan:
                 "mavlink": f"tcp:{v.serial0}",
                 "scripts": f"tcp:{v.serial1}, tcp:{v.serial2}",
                 "fdm": f"udp:{v.fdm}" if v.fdm else "-",
-                "camera": f"udp:{v.camera}" if v.camera else "-",
+                "camera": _camera_text(v),
                 "outputs": ", ".join(str(e) for e in v.outputs) or "-",
             }
             for v in self.vehicles
@@ -226,6 +247,19 @@ def output_rows(scenario: Scenario) -> list[OutputRow]:
         if r.endpoint.kind == "udp":
             r.shared_with = [o.vehicle for o in rows if o.endpoint == r.endpoint and o.vehicle != r.vehicle]
     return rows
+
+
+def _is_local(host: str) -> bool:
+    return host in ("127.0.0.1", "localhost", "0.0.0.0") or host.startswith("127.")
+
+
+def _camera_text(v: VehiclePorts) -> str:
+    if v.camera_mode == "relay":
+        extra = "".join(f" → {t.host}:{t.port}" for t in v.camera_targets)
+        return f"udp:{v.camera}{extra}"
+    if v.camera_mode == "direct":
+        return f"direct → {v.camera_send.host}:{v.camera_send.port}"
+    return "-"
 
 
 def port_in_use(proto: str, port: int, host: str = "0.0.0.0") -> bool:

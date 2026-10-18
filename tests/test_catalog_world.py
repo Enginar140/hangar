@@ -59,7 +59,8 @@ def test_world_builder(settings, tmp_path):
     sdf = ET.parse(second / "model.sdf").getroot()
     assert sdf.find("model").get("name") == "testplane_2"
     assert sdf.findtext(".//plugin[@name='ArduPilotPlugin']/fdm_port_in") == "9012"
-    assert sdf.findtext(".//plugin[@name='GstCameraPlugin']/udp_port") == "5601"
+    # relay mode: the plugin sends to Hangar's relay, readers use 5600 + index
+    assert sdf.findtext(".//plugin[@name='GstCameraPlugin']/udp_port") == "5701"
     assert (second / "meshes").is_symlink()
     assert ET.parse(second / "model.config").getroot().findtext("name") == "testplane_2"
     # originals untouched
@@ -107,7 +108,7 @@ def test_camera_is_added_to_a_model_without_one(settings, tmp_path):
     link = model.find("link[@name='hangar_camera_link']")
     assert link.findtext("pose").startswith("0.1 0 -0.05 0 1.5708")  # pitch 90 deg -> looks down
     assert link.findtext(".//image/width") == "640" and link.findtext(".//horizontal_fov") == "1.5708"
-    assert link.findtext(".//plugin[@name='GstCameraPlugin']/udp_port") == "5600"
+    assert link.findtext(".//plugin[@name='GstCameraPlugin']/udp_port") == "5700"
     joint = model.find("joint[@name='hangar_camera_joint']")
     assert (joint.findtext("parent"), joint.findtext("child")) == ("base_link", "hangar_camera_link")
 
@@ -116,7 +117,7 @@ def test_model_camera_is_kept_not_duplicated(settings, tmp_path):
     wv, model = _build(settings, tmp_path, {"model": "testplane", "camera": True})
     assert not wv.adds_camera
     assert model.find("link[@name='hangar_camera_link']") is None
-    assert model.findtext(".//plugin[@name='GstCameraPlugin']/udp_port") == "5600"
+    assert model.findtext(".//plugin[@name='GstCameraPlugin']/udp_port") == "5700"
 
 
 def test_no_camera_unless_asked(settings, tmp_path):
@@ -161,3 +162,39 @@ def test_camera_shorthand():
     sc = Scenario.model_validate({"vehicles": [{"model": "a", "camera": True}, {"model": "b", "camera": False}]})
     assert sc.vehicles[0].camera.enabled and sc.vehicles[0].camera.width == 1280
     assert sc.vehicles[1].camera.enabled is False
+
+
+def test_direct_camera_sends_straight_to_its_target(settings, tmp_path):
+    wv, model = _build(settings, tmp_path, {
+        "model": "testcopter", "camera": {"stream": "direct", "outputs": ["10.205.218.120:{5600+i}"]},
+    })
+    assert wv.ports.camera_mode == "direct" and wv.ports.camera is None  # this computer gets nothing
+    plugin = model.find(".//plugin[@name='GstCameraPlugin']")
+    assert (plugin.findtext("udp_host"), plugin.findtext("udp_port")) == ("10.205.218.120", "5600")
+
+
+def test_relay_camera_targets_and_bindings(settings):
+    from hangar.ports import PortPlan
+
+    sc = Scenario.model_validate({"vehicles": [
+        {"model": "testplane", "camera": {"outputs": ["10.0.0.5:5600", "127.0.0.1:{5650+i}", "127.0.0.1:5600"]}},
+        {"model": "testplane", "camera": {"stream": "direct", "outputs": ["239.0.0.1:5601"]}},
+    ]})
+    plan = PortPlan.build(sc, gazebo={"testplane": True, "testplane_2": True},
+                          cameras={"testplane": True, "testplane_2": True})
+    relay, direct = plan.vehicles
+    assert relay.camera == 5600 and relay.camera_send.port == 5700
+    # the local delivery port is not repeated as a target
+    assert [f"{t.host}:{t.port}" for t in relay.camera_targets] == ["10.0.0.5:5600", "127.0.0.1:5650"]
+    owners = {(b.port, b.owner) for b in plan.bindings()}
+    assert (5700, "testplane camera relay") in owners and (5650, "testplane camera output") in owners
+    assert not any(b.port == 5600 and "output" in b.owner for b in plan.bindings())  # remote host binds nothing
+    assert direct.camera_send.host == "239.0.0.1" and direct.camera is None
+
+
+def test_direct_needs_exactly_one_output():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="exactly one"):
+        Scenario.model_validate({"vehicles": [{"model": "a", "camera": {"stream": "direct"}}]})

@@ -189,3 +189,33 @@ async def test_logs_save(settings, tmp_path):
         await pilot.pause()
         text = out.read_text()
         assert "WARNING  hangar" in text and "PreArm: Need Position Estimate" in text
+
+
+async def test_ports_tab_camera_outputs(settings):
+    from hangar.tui.screens import CameraOutputDialog
+
+    sc = Scenario.model_validate({"vehicles": [{"model": "testplane", "camera": True}, {"model": "sitl:copter"}]})
+    app = HangarApp(scenario=sc, settings=settings)
+    async with app.run_test(size=(140, 60)) as pilot:
+        await pilot.press("3")
+        await pilot.pause()
+        video = app.query_one("#video", DataTable)
+        assert video.row_count == 1  # this computer, udp 5600
+        app.query_one("#vid-add", Button).press()
+        await pilot.pause()
+        dlg = app.screen
+        assert isinstance(dlg, CameraOutputDialog)
+        assert dlg.query_one("#ok", Button).disabled  # no address yet
+        dlg.query_one("#host", Input).value = "10.205.218.120"
+        dlg.query_one("#port", Input).value = "{5600+i}"
+        await pilot.pause()
+        assert not dlg.query_one("#ok", Button).disabled
+        dlg.query_one("#ok", Button).press()
+        await pilot.pause(0.5)
+        assert app.scenario.vehicles[0].camera.outputs == ["10.205.218.120:{5600+i}"]
+        assert video.row_count == 2
+        video.move_cursor(row=1)
+        await pilot.pause()
+        app.query_one("#vid-remove", Button).press()
+        await pilot.pause(0.5)
+        assert app.scenario.vehicles[0].camera.outputs == []

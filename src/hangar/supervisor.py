@@ -26,7 +26,7 @@ from .catalog import Catalog, VehicleModel
 from .mavlink import VehicleLink
 from .ports import Endpoint, PortPlan, VehiclePorts, port_in_use
 from .process import ManagedProcess, ProcState
-from .scenario import Scenario, VehicleSpec
+from .scenario import CameraSpec, Scenario, VehicleSpec
 from .settings import Settings
 from .world import WorldVehicle, build_world
 
@@ -74,6 +74,7 @@ class VehicleRuntime:
     run_dir: Path
     process: ManagedProcess | None = None
     link: VehicleLink | None = None
+    camera_relay: camera.VideoRelay | None = None
     camera_bridge: ManagedProcess | None = None
     camera_viewer: ManagedProcess | None = None
     camera_topic: str | None = None
@@ -211,6 +212,9 @@ class Supervisor:
                 warnings.append(f"{v.name}: parameter files not found: {', '.join(res.missing)}")
             if v.camera and v.camera.enabled and not m.needs_gazebo:
                 warnings.append(f"{v.name}: cameras need a Gazebo model; {m.name} uses built-in physics")
+            if v.camera and v.camera.stream == "direct" and v.camera.v4l2_device:
+                warnings.append(f"{v.name}: v4l2_device needs camera stream 'relay'; "
+                                "with 'direct' this computer gets no frames")
 
         if any(m.needs_gazebo for m in models.values()):
             if not sc.world:
@@ -288,7 +292,7 @@ class Supervisor:
 
         if self.uses_gazebo:  # cameras only need Gazebo, not the autopilots
             for v in self.vehicles:
-                if v.ports.camera:
+                if v.ports.has_camera:
                     task = asyncio.create_task(self._start_camera(v))
                     self._background.add(task)
                     task.add_done_callback(self._background.discard)
@@ -327,7 +331,7 @@ class Supervisor:
         )
         for v in gz_vehicles:
             if v.adds_camera:
-                self.log(v.instance_name, f"camera added to the model (udp:{v.ports.camera})", "event")
+                self.log(v.instance_name, "camera added to the model", "event")
         self.log("hangar", f"world generated: {world_file}", "event")
 
         self._env = self.gazebo_env()
@@ -408,14 +412,29 @@ class Supervisor:
         if p.state == ProcState.EXITED:
             self.log(v.name, f"SITL exited unexpectedly (code {p.returncode}), see {p.log_path}", "error")
 
+    def _camera_destinations(self, v: VehicleRuntime) -> list[tuple[str, int]]:
+        assert v.ports.camera
+        return [("127.0.0.1", v.ports.camera)] + [(t.host, t.port) for t in v.ports.camera_targets]
+
     async def _start_camera(self, v: VehicleRuntime) -> None:
+        if v.ports.camera_mode == "relay":
+            v.camera_relay = camera.VideoRelay(
+                v.ports.camera_send.port, self._camera_destinations(v),
+                on_error=lambda text, name=v.name: self.log(name, text, "warning"),
+            )
+            await v.camera_relay.start()
         self.log(v.name, "camera: enabling stream", "event")
         topic = await camera.enable_streaming(v.name, self._env)
         if not topic:
             self.log(v.name, "camera: enable topic not found", "warning")
             return
         v.camera_topic = topic
-        self.log(v.name, f"camera streaming on udp:{v.ports.camera}", "event")
+        if v.ports.camera_mode == "direct":
+            t = v.ports.camera_send
+            self.log(v.name, f"camera streaming directly to {t.host}:{t.port} (not to this computer)", "event")
+            return
+        sent = ", ".join(f"{h}:{p}" for h, p in self._camera_destinations(v))
+        self.log(v.name, f"camera streaming to {sent}", "event")
         device = v.spec.camera.v4l2_device if v.spec.camera else None
         if device:
             if not Path(device).exists():
@@ -431,7 +450,7 @@ class Supervisor:
     def camera_info(self, name: str) -> dict:
         """Port, size and ready-to-paste usage for a vehicle's camera stream."""
         v = self.vehicle(name)
-        if not v.ports.camera:
+        if not v.ports.has_camera:
             raise SupervisorError(f"{name} has no camera")
         cam = v.spec.camera
         own = v.model.camera_size or (1280, 720)
@@ -440,18 +459,61 @@ class Supervisor:
         height = cam.height if cam and (not v.model.has_camera or "height" in explicit) else own[1]
         fps = cam.fps if cam else 30
         device = cam.v4l2_device if cam else None
+        local = v.ports.camera
+        targets = [f"{t.host}:{t.port}" for t in v.ports.camera_targets]
+        # the code is for whoever receives: this computer in relay mode, the target otherwise
+        port = local if local else v.ports.camera_send.port
         return {
-            "port": v.ports.camera, "width": width, "height": height, "fps": fps, "device": device,
+            "mode": v.ports.camera_mode, "port": local, "targets": targets,
+            "width": width, "height": height, "fps": fps, "device": device,
             "streaming": bool(v.camera_topic),
             "viewer": bool(v.camera_viewer and v.camera_viewer.alive),
-            "usage": camera.usage(v.ports.camera, width, height, device),
+            "packets": v.camera_relay.packets if v.camera_relay else None,
+            "usage": camera.usage(port, width, height, device),
         }
+
+    def check_camera_output(self, name: str, target: str) -> list[str]:
+        """Problems adding ``target`` (host:port template) to a camera would cause."""
+        trial = self.scenario.model_copy(deep=True)
+        spec = next(v for v in trial.vehicles if v.name == name)
+        if not spec.camera or not spec.camera.enabled:
+            return [f"{name} has no camera"]
+        if spec.camera.stream == "direct":
+            return [f"{name}'s camera is 'direct' (one address); edit the vehicle to change it"]
+        try:
+            spec.camera = CameraSpec.model_validate(
+                {**spec.camera.model_dump(), "outputs": [*spec.camera.outputs, target]})
+            before = set(self._plan_for(self.scenario).conflicts(check_system=False))
+            plan = self._plan_for(trial)
+        except ValueError as e:
+            return [str(e).splitlines()[0]]
+        return [c for c in plan.conflicts(check_system=False) if c not in before]
+
+    async def set_camera_outputs(self, name: str, outputs: list[str]) -> bool:
+        """Change where a camera streams. Returns True when it took effect now; a
+        'direct' camera is set in Gazebo's model, so it changes on the next start."""
+        spec = next(v for v in self.scenario.vehicles if v.name == name)
+        cam = spec.camera or CameraSpec()
+        spec.camera = CameraSpec.model_validate({**cam.model_dump(), "outputs": outputs})
+        if self.state != SimState.RUNNING:
+            return False
+        v = self.vehicle(name)
+        new_ports = self._plan_for(self.scenario).vehicles[v.ports.index]
+        if v.ports.camera_mode != "relay" or new_ports.camera_mode != "relay":
+            return False
+        v.ports.camera_targets = new_ports.camera_targets
+        if v.camera_relay:
+            v.camera_relay.set_destinations(self._camera_destinations(v))
+        return True
 
     async def toggle_camera_view(self, name: str) -> bool:
         """Open or close a viewer window. Returns True when it is now open."""
         v = self.vehicle(name)
-        if not v.ports.camera:
+        if not v.ports.has_camera:
             raise SupervisorError(f"{name} has no camera")
+        if not v.ports.camera:
+            raise SupervisorError(f"{name}'s camera streams directly to another address; "
+                                  "switch it to 'relay' to watch it here")
         if v.camera_viewer and v.camera_viewer.alive:
             await v.camera_viewer.stop()
             v.camera_viewer = None
@@ -632,6 +694,10 @@ class Supervisor:
         for v in self.vehicles:
             procs += [p for p in (v.camera_viewer, v.camera_bridge) if p]
         await asyncio.gather(*(p.stop() for p in procs), return_exceptions=True)
+        for v in self.vehicles:
+            if v.camera_relay:
+                v.camera_relay.close()
+                v.camera_relay = None
         await asyncio.gather(*(v.link.stop() for v in self.vehicles if v.link), return_exceptions=True)
         await asyncio.gather(*(v.process.stop() for v in self.vehicles if v.process), return_exceptions=True)
         if self.gazebo:

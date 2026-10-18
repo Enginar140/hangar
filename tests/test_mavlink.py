@@ -124,3 +124,40 @@ async def test_outputs_change_while_running():
         await link.stop()
         transport.close()
         server.close()
+
+
+async def test_video_relay_copies_to_every_destination():
+    from hangar.camera import VideoRelay
+
+    loop = asyncio.get_running_loop()
+    got: dict[int, list[bytes]] = {}
+
+    class Rx(asyncio.DatagramProtocol):
+        def __init__(self, port):
+            self.port = port
+
+        def datagram_received(self, data, addr):
+            got.setdefault(self.port, []).append(data)
+
+    ports = [free_port(socket.SOCK_DGRAM) for _ in range(3)]
+    receivers = [(await loop.create_datagram_endpoint(lambda p=p: Rx(p), local_addr=("127.0.0.1", p)))[0]
+                 for p in ports]
+    listen = free_port(socket.SOCK_DGRAM)
+    relay = VideoRelay(listen, [("127.0.0.1", ports[0]), ("127.0.0.1", ports[1])])
+    await relay.start()
+    send, _ = await loop.create_datagram_endpoint(asyncio.DatagramProtocol, remote_addr=("127.0.0.1", listen))
+    try:
+        send.sendto(b"\x80rtp-1")
+        await asyncio.sleep(0.2)
+        assert got.get(ports[0]) == [b"\x80rtp-1"] and got.get(ports[1]) == [b"\x80rtp-1"]
+        relay.set_destinations([("127.0.0.1", ports[1]), ("127.0.0.1", ports[2])])  # while running
+        send.sendto(b"\x80rtp-2")
+        await asyncio.sleep(0.2)
+        assert got[ports[0]] == [b"\x80rtp-1"]  # dropped destination gets nothing new
+        assert got[ports[1]][-1] == b"\x80rtp-2" and got[ports[2]] == [b"\x80rtp-2"]
+        assert relay.packets == 2
+    finally:
+        send.close()
+        relay.close()
+        for r in receivers:
+            r.close()

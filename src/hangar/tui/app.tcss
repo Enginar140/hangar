@@ -251,6 +251,11 @@ ModalScreen {
     height: auto;
 }
 
+#video {
+    height: auto;
+    max-height: 12;
+}
+
 .hint-text {
     height: auto;
     color: $text-muted;

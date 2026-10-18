@@ -8,6 +8,10 @@
 - MAVProxy installs on demand into Hangar's own folder (wxPython wheel for Ubuntu, no VTK,
   no sudo): from the Map button, `hangar sources fetch mavproxy` or `install.sh --mavproxy`.
 - `hangar doctor` reports MAVProxy.
+- **Cameras to other devices**: `camera.outputs` and `camera.stream`. `relay` (default) copies the
+  RTP stream untouched to this computer and every output, editable live in the Ports tab
+  (Camera outputs); `direct` makes the camera plugin send straight to one address. Multicast works.
+  The camera plugin now sends to 5700 + index in relay mode; readers keep using 5600 + index.
 
 ## 0.1.0 (2026-10-18)
 

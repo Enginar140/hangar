@@ -46,6 +46,7 @@ from ..settings import Settings
 from ..supervisor import LogLine, SimState, Supervisor, SupervisorError, VehicleRuntime, format_plain
 from .screens import (
     TYPE_ICONS,
+    CameraOutputDialog,
     CameraScreen,
     ConfirmDialog,
     DoctorScreen,
@@ -183,6 +184,11 @@ class HangarApp(App):
                         yield Button(t("Remove output"), id="out-remove", variant="error", compact=True)
                     yield DataTable(id="outputs", cursor_type="row", zebra_stripes=True)
                     yield Static(id="ports-help", classes="hint-text")
+                    with Horizontal(classes="section-bar"):
+                        yield Label(t("Camera outputs"), classes="section")
+                        yield Button(t("Send to a device"), id="vid-add", variant="primary", compact=True)
+                        yield Button(t("Remove output"), id="vid-remove", variant="error", compact=True)
+                    yield DataTable(id="video", cursor_type="row", zebra_stripes=True)
                     yield Label(t("Ports of each vehicle"), classes="section")
                     yield DataTable(id="ports", cursor_type="row", zebra_stripes=True)
             with TabPane(t("Scenario"), id="tab-scenario"):
@@ -215,6 +221,10 @@ class HangarApp(App):
         for col in ("Vehicle", "Output", "For", "Shared"):
             outputs.add_column(t(col), key=col)
         self._output_rows: list = []
+        video = self._main.query_one("#video", DataTable)
+        for col in ("Vehicle", "Stream", "Goes to"):
+            video.add_column(t(col), key=col)
+        self._video_rows: list[tuple[str, str | None]] = []
         self._sync_form()
         self._refresh_all()
         self.set_interval(0.5, self._tick)
@@ -350,10 +360,14 @@ class HangarApp(App):
             outs = ", ".join(str(e) for e in rt.ports.outputs) or "—"
             grid.add_row("MAVLink", f"tcp:{rt.ports.serial0} → {outs}", "", "")
             grid.add_row(t("Scripts"), f"tcp:127.0.0.1:{rt.ports.serial1}  ({t('only this vehicle')})", "", "")
-            if rt.ports.camera:
-                cam = f"udp:{rt.ports.camera}"
-                if rt.spec.camera and rt.spec.camera.v4l2_device:
-                    cam += f" → {rt.spec.camera.v4l2_device}"
+            if rt.ports.has_camera:
+                if rt.ports.camera_mode == "direct":
+                    send = rt.ports.camera_send
+                    cam = f"→ {send.host}:{send.port}  ({t('direct, not to this computer')})"
+                else:
+                    cam = f"udp:{rt.ports.camera}" + "".join(f" → {x.host}:{x.port}" for x in rt.ports.camera_targets)
+                    if rt.spec.camera and rt.spec.camera.v4l2_device:
+                        cam += f" → {rt.spec.camera.v4l2_device}"
                 grid.add_row(t("Camera"), cam, "", "")
 
         header = Text.assemble(
@@ -410,7 +424,79 @@ class HangarApp(App):
                 table.add_row(r["index"], r["name"], r["sysid"], r["mavlink"], r["scripts"], r["fdm"], r["camera"])
         self._refresh_outputs()
 
+    def _refresh_video(self) -> None:
+        table = self._main.query_one("#video", DataTable)
+        cursor = table.cursor_row
+        table.clear()
+        self._video_rows = []
+        try:
+            plan = self.supervisor._plan_for(self.scenario)
+        except ValueError:
+            return
+        for spec, vp in zip(self.scenario.vehicles, plan.vehicles):
+            if not vp.has_camera:
+                continue
+            name = spec.name or ""
+            templates = spec.camera.outputs if spec.camera else []
+            if vp.camera_mode == "relay":
+                table.add_row(Text(name, "bold"), "relay", f"127.0.0.1:{vp.camera}  [dim]({t('this computer')})[/]")
+                self._video_rows.append((name, None))
+                expanded = [f"{x.host}:{x.port}" for x in vp.camera_targets]
+            else:
+                expanded = [f"{vp.camera_send.host}:{vp.camera_send.port}"]
+            for tpl, shown in zip(templates, expanded):
+                mode = "relay" if vp.camera_mode == "relay" else Text("direct", "yellow")
+                table.add_row(Text(name, "bold"), mode, f"{shown}  [dim]{escape(tpl)}[/]")
+                self._video_rows.append((name, tpl))
+        if self._video_rows:
+            table.move_cursor(row=min(max(cursor, 0), len(self._video_rows) - 1))
+
+    @on(Button.Pressed, "#vid-add")
+    def _video_add(self) -> None:
+        names = [n for n, tpl in self._video_rows if tpl is None]
+        if not names:
+            self.notify(t("No camera streams through Hangar. Edit a vehicle (e), switch its camera on."),
+                        severity="warning", timeout=6)
+            return
+
+        def done(result) -> None:
+            if result:
+                name, target = result
+                spec = next(v for v in self.scenario.vehicles if v.name == name)
+                self._video_change(name, [*spec.camera.outputs, target], f"+ {name} → {target}")
+
+        self.push_screen(CameraOutputDialog(self.supervisor, names), done)
+
+    @on(Button.Pressed, "#vid-remove")
+    def _video_remove(self) -> None:
+        table = self._main.query_one("#video", DataTable)
+        if not self._video_rows or table.cursor_row < 0:
+            return
+        name, tpl = self._video_rows[table.cursor_row]
+        spec = next(v for v in self.scenario.vehicles if v.name == name)
+        if tpl is None:
+            self.notify(t("This computer always gets a relayed camera."), severity="warning")
+            return
+        if spec.camera.stream == "direct":
+            self.notify(t("A direct camera needs its one address; edit the vehicle (e) to change it."),
+                        severity="warning", timeout=6)
+            return
+        self._video_change(name, [o for o in spec.camera.outputs if o != tpl], f"− {name} → {tpl}")
+
+    @work(group="video")
+    async def _video_change(self, name: str, outputs: list[str], label: str) -> None:
+        try:
+            live = await self.supervisor.set_camera_outputs(name, outputs)
+        except (SupervisorError, ValueError) as e:
+            self.notify(str(e).splitlines()[0], severity="error", timeout=8)
+            return
+        running = self.supervisor.state == SimState.RUNNING
+        note = t("applied live") if live else (t("on the next start") if running else "")
+        self.notify(label + (f"  ({note})" if note else ""))
+        self._scenario_changed(refresh_form=False)
+
     def _refresh_outputs(self) -> None:
+        self._refresh_video()
         table = self._main.query_one("#outputs", DataTable)
         cursor = table.cursor_row
         table.clear()
@@ -695,7 +781,7 @@ class HangarApp(App):
     @on(Button.Pressed, "#camera")
     def _camera(self) -> None:
         rt = self._runtime(self.selected)
-        if not rt or not rt.ports.camera:
+        if not rt or not rt.ports.has_camera:
             self.notify(t("This vehicle has no camera. Edit it (e) and switch the camera on."), severity="warning")
             return
         self.push_screen(CameraScreen(self.supervisor, rt.name))

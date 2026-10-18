@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import re
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -70,11 +71,26 @@ class CameraSpec(BaseModel):
     height: int = Field(default=720, gt=0)
     fov: float = Field(default=60.0, gt=0, lt=180, description="horizontal field of view, degrees")
     fps: int = Field(default=30, gt=0)
+    stream: Literal["relay", "direct"] = Field(
+        default="relay",
+        description="relay: Hangar copies the stream to this computer and every output; "
+                    "direct: the camera sends straight to its one output, this computer gets nothing",
+    )
+    outputs: list[str] = Field(
+        default_factory=list,
+        description="where else the stream goes, host:port; {i} = vehicle index, e.g. 10.0.0.5:{5600+i}",
+    )
 
     @field_validator("pose")
     @classmethod
     def _pose(cls, v: list[float] | None) -> list[float] | None:
         return None if v is None else _six(v)
+
+    @model_validator(mode="after")
+    def _direct_has_one_target(self) -> CameraSpec:
+        if self.stream == "direct" and len(self.outputs) != 1:
+            raise ValueError("camera stream 'direct' sends to exactly one output; set outputs: [host:port]")
+        return self
 
 
 class VehicleSpec(BaseModel):

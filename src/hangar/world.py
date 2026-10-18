@@ -37,7 +37,7 @@ class WorldVehicle:
 
     @property
     def adds_camera(self) -> bool:
-        return bool(self.ports.camera) and not self.model.has_camera
+        return self.ports.has_camera and not self.model.has_camera
 
 
 def parse_sdf(path: Path) -> ET.ElementTree:
@@ -69,7 +69,7 @@ def build_world(world_sdf: Path, vehicles: list[WorldVehicle], out_dir: Path,
         raise ValueError(f"{world_sdf} has no <world> element")
 
     _remove_vehicle_includes(world, ardupilot_models)
-    if any(v.ports.camera for v in vehicles):
+    if any(v.ports.has_camera for v in vehicles):
         _ensure_sensors_system(world)
 
     for v in vehicles:
@@ -130,17 +130,17 @@ def _make_instance_model(v: WorldVehicle, models_dir: Path, model_paths: Sequenc
             _set_child(plugin, "fdm_addr", "127.0.0.1")
             _set_child(plugin, "fdm_port_in", str(v.ports.fdm))
             found_fdm = True
-        elif "GstCameraPlugin" in name and v.ports.camera:
-            _set_child(plugin, "udp_host", "127.0.0.1")
-            _set_child(plugin, "udp_port", str(v.ports.camera))
-    if v.ports.camera and v.model.has_camera and v.camera:
+        elif "GstCameraPlugin" in name and v.ports.camera_send:
+            _set_child(plugin, "udp_host", v.ports.camera_send.host)
+            _set_child(plugin, "udp_port", str(v.ports.camera_send.port))
+    if v.ports.has_camera and v.model.has_camera and v.camera:
         _tune_own_camera(tree.getroot(), v.camera)
     if not found_fdm:
         raise ValueError(f"{v.model.name}: no ArduPilotPlugin in model.sdf")
     if v.adds_camera:
         parent = v.model.camera_parent or _body_link(model, [src.parent, *model_paths])
         pose = (v.camera.pose if v.camera and v.camera.pose else None) or v.model.camera_pose or DEFAULT_CAMERA_POSE
-        _add_camera(model, parent, pose, v.camera or CameraSpec(), v.ports.camera)
+        _add_camera(model, parent, pose, v.camera or CameraSpec(), v.ports.camera_send)
     tree.write(dst / "model.sdf", encoding="utf-8", xml_declaration=True)
 
     cfg_src = src / "model.config"
@@ -213,7 +213,7 @@ def _tune_own_camera(root: ET.Element, cam: CameraSpec) -> None:
             _set_child(sensor, "update_rate", str(cam.fps))
 
 
-def _add_camera(model: ET.Element, parent: str, pose: list[float], cam: CameraSpec, port: int) -> None:
+def _add_camera(model: ET.Element, parent: str, pose: list[float], cam: CameraSpec, send) -> None:
     """The camera block known to work with ArduPilot's GstCameraPlugin."""
     x, y, z, roll, pitch, yaw = pose
     link = ET.SubElement(model, "link", {"name": CAMERA_LINK})
@@ -243,8 +243,8 @@ def _add_camera(model: ET.Element, parent: str, pose: list[float], cam: CameraSp
     ET.SubElement(clip, "near").text = "0.1"
     ET.SubElement(clip, "far").text = "1000"
     plugin = ET.SubElement(sensor, "plugin", {"name": "GstCameraPlugin", "filename": "GstCameraPlugin"})
-    ET.SubElement(plugin, "udp_host").text = "127.0.0.1"
-    ET.SubElement(plugin, "udp_port").text = str(port)
+    ET.SubElement(plugin, "udp_host").text = send.host
+    ET.SubElement(plugin, "udp_port").text = str(send.port)
     ET.SubElement(plugin, "use_basic_pipeline").text = "true"
     ET.SubElement(plugin, "use_cuda").text = "false"
     ET.SubElement(sensor, "always_on").text = "1"

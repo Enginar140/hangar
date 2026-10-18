@@ -8,9 +8,86 @@ webcam app can read it) or open a viewer window on demand.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import socket
 import time
+from collections.abc import Callable
 
 RTP_CAPS = "application/x-rtp,media=video,clock-rate=90000,encoding-name=H264"
+
+
+class VideoRelay(asyncio.DatagramProtocol):
+    """Copies a camera's RTP packets, untouched, to every destination.
+
+    The camera plugin can send to one address only; this lets one stream reach
+    this computer's readers and other machines at the same time, and the
+    destinations can change while it runs."""
+
+    def __init__(self, listen_port: int, destinations: list[tuple[str, int]],
+                 on_error: Callable[[str], None] | None = None):
+        self.listen_port = listen_port
+        self.destinations: list[tuple[str, int]] = []
+        self.on_error = on_error
+        self.packets = 0
+        self.errors = 0
+        self._resolved: dict[tuple[str, int], tuple[str, int] | None] = {}
+        self._transport: asyncio.DatagramTransport | None = None
+        self._out: socket.socket | None = None
+        self.set_destinations(destinations)
+
+    async def start(self) -> None:
+        out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        out.setblocking(False)
+        out.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)  # stay on the local network
+        out.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)  # this computer can join too
+        self._out = out
+        loop = asyncio.get_running_loop()
+        self._transport, _ = await loop.create_datagram_endpoint(
+            lambda: self, local_addr=("127.0.0.1", self.listen_port)
+        )
+
+    def set_destinations(self, destinations: list[tuple[str, int]]) -> None:
+        self.destinations = list(dict.fromkeys(destinations))
+        for dest in self.destinations:
+            if dest not in self._resolved:
+                self._resolved[dest] = self._resolve(dest)
+
+    def _resolve(self, dest: tuple[str, int]) -> tuple[str, int] | None:
+        host, port = dest
+        try:
+            ipaddress.ip_address(host)
+            return host, port
+        except ValueError:
+            pass
+        try:
+            return socket.gethostbyname(host), port
+        except OSError as e:
+            if self.on_error:
+                self.on_error(f"camera output {host}:{port}: {e}")
+            return None
+
+    def datagram_received(self, data: bytes, addr) -> None:
+        self.packets += 1
+        if not self._out:
+            return
+        for dest in self.destinations:
+            target = self._resolved.get(dest)
+            if target is None:
+                continue
+            try:
+                self._out.sendto(data, target)
+            except BlockingIOError:
+                pass  # a full send buffer drops one packet, like the network would
+            except OSError as e:
+                self.errors += 1
+                if self.errors in (1, 100, 10000) and self.on_error:
+                    self.on_error(f"camera output {dest[0]}:{dest[1]}: {e}")
+
+    def close(self) -> None:
+        if self._transport:
+            self._transport.close()
+        if self._out:
+            self._out.close()
 
 
 async def _run(argv: list[str], env: dict[str, str], timeout: float = 5.0) -> tuple[int, str]:

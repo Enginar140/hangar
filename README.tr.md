@@ -155,6 +155,30 @@ Arayüzde araç penceresinden kalite (düşük/orta/yüksek/özel çözünürlü
 görüş açısı ve yön ayarlanır. Video bit hızı ArduPilot'un kamera eklentisinde
 800 kbit/s olarak sabit.
 
+**Başka cihazlara yayın.** Kamera görüntüsü ağdaki başka cihazlara da
+gönderilebilir; örneğin görüntü işleme kodunun çalıştığı bir Jetson'a ya da
+QGroundControl açık bir laptop'a. İki mod var:
+
+```yaml
+    camera:
+      stream: relay                     # varsayılan: Hangar yayını kopyalar
+      outputs: ["10.205.218.120:5600", "192.168.1.50:{5600+i}", "239.0.0.1:5600"]
+```
+
+- `relay` (varsayılan): Kamera Hangar'a gönderir. Hangar her paketi hiç
+  değiştirmeden hem bu bilgisayara (`udp 5600 + sıra`) **hem de** `outputs`
+  listesindeki her adrese kopyalar. Yeniden kodlama yapılmadığı için ek
+  gecikme ya da kalite kaybı olmaz. Hedefler simülasyon çalışırken de
+  Portlar sekmesinden (**Görüntü çıkışları**) eklenip silinebilir.
+- `direct`: Kamera eklentisi görüntüyü arada aktarıcı olmadan, `outputs`'taki
+  tek adrese doğrudan gönderir; ama bu bilgisayar görüntü almaz. Değişiklikler
+  bir sonraki başlatmada uygulanır.
+
+Multicast adresi (`239.x.x.x`) ağdaki tüm cihazlara aynı anda ulaşır. Alıcı
+tarafta: QGroundControl > Video > UDP h.264 ayarına portu yazmak yeterli; ya
+da Kamera penceresindeki kod o cihazda o portla çalışır. Alıcının güvenlik
+duvarı bu porta izin vermeli, örn. `sudo ufw allow 5600/udp`. Yayın şifresizdir.
+
 **Kamerayı Python'da kullanmak.** Kamera butonu, o kameranın portuyla
 doldurulmuş hazır kod içeren bir pencere açar. Seçenekler: numpy/OpenCV ile
 Python, GStreamer'lı OpenCV, v4l2 cihazı ve `gst-launch` komutu. Kodu `.py`
@@ -213,7 +237,8 @@ eklemene izin vermez.
 | MAVLink (SITL serial0) | tcp 5760 | tcp 5770 | 5760 + 10*i* |
 | Script portları (sadece o araç) | tcp 5762, 5763 | tcp 5772, 5773 | 5762 + 10*i*, 5763 + 10*i* |
 | Gazebo ↔ SITL | udp 9002 | udp 9012 | 9002 + 10*i* |
-| Kamera (RTP H.264) | udp 5600 | udp 5601 | 5600 + *i* |
+| Kamera, bu bilgisayar (RTP H.264) | udp 5600 | udp 5601 | 5600 + *i* |
+| Kamera, eklenti → Hangar aktarıcısı | udp 5700 | udp 5701 | 5700 + *i* |
 | MAVLink sistem id | 1 | 2 | *i* + 1 |
 
 ## Kendi aracını eklemek
