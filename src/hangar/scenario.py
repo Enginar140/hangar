@@ -44,13 +44,37 @@ class Home(BaseModel):
         return f"{self.lat:.7f},{self.lon:.7f},{self.alt:g},{self.heading:g}"
 
 
+def _six(v: list[float]) -> list[float]:
+    if len(v) == 3:
+        return [*v, 0.0, 0.0, 0.0]
+    if len(v) == 4:  # x y z yaw
+        return [v[0], v[1], v[2], 0.0, 0.0, v[3]]
+    if len(v) != 6:
+        raise ValueError("pose must be [x, y, z], [x, y, z, yaw] or [x, y, z, roll, pitch, yaw]")
+    return v
+
+
 class CameraSpec(BaseModel):
+    """A vehicle camera. Models without one get it added to their run copy."""
+
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
     v4l2_device: str | None = Field(
         default=None, description="e.g. /dev/video2; frames become readable by OpenCV"
     )
+    pose: list[float] | None = Field(
+        default=None, description="x y z roll pitch yaw on the body (m, deg); pitch 90 looks down"
+    )
+    width: int = Field(default=1280, gt=0)
+    height: int = Field(default=720, gt=0)
+    fov: float = Field(default=60.0, gt=0, lt=180, description="horizontal field of view, degrees")
+    fps: int = Field(default=30, gt=0)
+
+    @field_validator("pose")
+    @classmethod
+    def _pose(cls, v: list[float] | None) -> list[float] | None:
+        return None if v is None else _six(v)
 
 
 class VehicleSpec(BaseModel):
@@ -63,16 +87,19 @@ class VehicleSpec(BaseModel):
     outputs: list[str] = Field(default_factory=list)
     camera: CameraSpec | None = None
 
+    @field_validator("camera", mode="before")
+    @classmethod
+    def _camera_shorthand(cls, v):
+        if v is True:  # `camera: true`
+            return {}
+        if v is False:
+            return {"enabled": False}
+        return v
+
     @field_validator("pose")
     @classmethod
     def _pose(cls, v: list[float]) -> list[float]:
-        if len(v) == 3:
-            return [*v, 0.0, 0.0, 0.0]
-        if len(v) == 4:  # x y z yaw
-            return [v[0], v[1], v[2], 0.0, 0.0, v[3]]
-        if len(v) != 6:
-            raise ValueError("pose must be [x, y, z], [x, y, z, yaw] or [x, y, z, roll, pitch, yaw]")
-        return v
+        return _six(v)
 
     @property
     def pose_sdf(self) -> str:

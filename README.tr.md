@@ -105,6 +105,27 @@ vehicles:
     outputs: ["tcpin:0.0.0.0:{6000+i}"]   # örn. companion bilgisayar buraya bağlanır
 ```
 
+### Kameralar
+
+Modelinde kamera olmasa bile her Gazebo aracına kamera takılabilir. `camera: true`
+yazınca Hangar o çalıştırmanın model kopyasına bir kamera ekler (orijinal
+dosyalar değişmez). Görüntü RTP/UDP üzerinden H.264 olarak yayınlanır.
+Ayarların hepsi opsiyoneldir:
+
+```yaml
+    camera:
+      pose: [0, 0, -0.05, 0, 90, 0]   # gövde üzerinde, m/derece; pitch 90 aşağı bakar (varsayılan: burun, ileri)
+      width: 1280
+      height: 720
+      fov: 60                         # yatay görüş açısı, derece
+      fps: 30
+      v4l2_device: /dev/video2        # opsiyonel: OpenCV/ROS webcam gibi okur
+```
+
+Kendi kamerası olan model onu kullanmaya devam eder. Kapatmak için `camera: false` yaz.
+Arayüzde araç penceresinde bir kamera anahtarı var; Kamera butonu da görüntüleyiciyi açar.
+Yayın portu Portlar sekmesinde görünür (udp 5600 + araç sırası).
+
 ### Port düzeni
 
 | | araç 0 | araç 1 | araç *i* |
@@ -123,6 +144,7 @@ modelin yanına bir `hangar.yaml` koy:
 ```yaml
 type: plane                 # copter | plane | rover | boat
 params: [benim_ucagim.param]
+camera_pose: [0.5, 0, 0.05, 0, 0, 0]   # opsiyonel: `camera: true` kamerayı buraya takar
 ```
 
 Sonra model klasörünü ekle: `hangar config add catalog.model_paths /yol/models`.

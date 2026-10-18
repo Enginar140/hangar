@@ -169,8 +169,9 @@ def cmd_models(args, settings: Settings) -> int:
         if res.missing:
             params += f" [yellow](missing: {', '.join(res.missing)})[/]"
         table.add_row(name, m.type, "Gazebo" if m.needs_gazebo else "built-in",
-                      "✓" if m.has_camera else "", params or "—")
+                      "✓" if m.has_camera else ("+" if m.needs_gazebo else ""), params or "—")
     console.print(table)
+    console.print("[dim]Camera: ✓ the model has one, + `camera: true` adds one[/]")
     for w in cat.warnings:
         console.print(f"[yellow]! {escape(w)}[/]")
     return 0

@@ -119,6 +119,26 @@ vehicles:
     outputs: ["tcpin:0.0.0.0:{6000+i}"]
 ```
 
+### Cameras
+
+Any Gazebo vehicle can have a camera, even if its model ships without one.
+`camera: true` adds a camera to that run's copy of the model (the original
+files stay untouched) and streams H.264 over RTP/UDP. Every key is optional:
+
+```yaml
+    camera:
+      pose: [0, 0, -0.05, 0, 90, 0]   # on the body, m/deg; pitch 90 looks down (default: the nose, looking ahead)
+      width: 1280
+      height: 720
+      fov: 60                         # horizontal, degrees
+      fps: 30
+      v4l2_device: /dev/video2        # optional: readable by OpenCV/ROS like a webcam
+```
+
+A model that already has a camera keeps it, and `camera: false` switches it off.
+In the UI, the vehicle dialog has a camera switch, and the Camera button opens
+a viewer. The stream port is shown in the Ports tab (udp 5600 + vehicle index).
+
 Output kinds: `udp:host:port` sends to a listener (the GCS case),
 `udpin:host:port` listens and replies to whoever talks to it, and
 `tcpin:host:port` accepts TCP clients.
@@ -141,9 +161,10 @@ Any Gazebo model whose `model.sdf` contains an `ArduPilotPlugin` shows up in
 model:
 
 ```yaml
-type: plane                 # copter | plane | rover | boat
-defaults: [plane.parm]      # optional, from ArduPilot's default_params
-params: [my_plane.param]    # optional, found next to the model or in ../config
+type: plane                    # copter | plane | rover | boat
+defaults: [models/plane.parm]  # optional, relative to ArduPilot's Tools/autotest
+params: [my_plane.param]       # optional, found next to the model or in ../config
+camera_pose: [0.5, 0, 0.05, 0, 0, 0]  # optional, where `camera: true` mounts a camera
 ```
 
 Then add the folder: `hangar config add catalog.model_paths /path/to/models`.

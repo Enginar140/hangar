@@ -159,6 +159,14 @@ ModalScreen {
     background: $surface;
 }
 
+.dialog.compact Label {
+    margin-top: 0;
+}
+
+.dialog.compact .switch-row {
+    margin-top: 0;
+}
+
 .dialog.narrow {
     width: 56;
 }
@@ -176,6 +184,17 @@ ModalScreen {
     text-style: bold;
     color: $text;
     margin: 0 0 1 0;
+}
+
+.switch-row {
+    height: auto;
+    margin-top: 1;
+}
+
+.switch-row Label {
+    margin: 0 1;
+    height: 3;
+    content-align: left middle;
 }
 
 .dialog-buttons {

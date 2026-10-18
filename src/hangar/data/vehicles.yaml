@@ -7,6 +7,9 @@
 #              (the same files sim_vehicle.py uses, see pysim/vehicleinfo.py)
 #   params:    extra parameter files (looked up next to the model and in config/ dirs)
 #   skip:      true to hide a model that is not a vehicle on its own
+#   camera_pose:   where `camera: true` mounts a camera if the model has none
+#                  [x, y, z, roll, pitch, yaw] in m/deg on the body (default: nose, looking ahead)
+#   camera_parent: link the camera is fixed to (default: base_link)
 
 # Vehicles that use ArduPilot's built-in physics. They need no Gazebo, so they
 # work right after install and are handy for quick tests and CI.
@@ -48,12 +51,12 @@ gazebo:
   hexapod_copter:         {type: copter}
   quadruped:              {type: copter}
   skywalker_x8_quad:      {type: plane,  defaults: [default_params/quadplane.parm]}
-  skywalker_x8:           {type: plane}
-  skycat_tvbs:            {type: plane}
-  mini_talon_vtail:       {type: plane}
-  swan_k1_hwing:          {type: plane}
-  wsc_aircraft:           {type: plane}
-  firtinam:               {type: plane}
+  skywalker_x8:           {type: plane, camera_pose: [0.7, 0, 0.05, 0, 0, 0]}
+  skycat_tvbs:            {type: plane, camera_pose: [0.5, 0, 0.1, 0, 0, 0]}
+  mini_talon_vtail:       {type: plane, camera_pose: [0.4, 0, 0.05, 0, 0, 0]}
+  swan_k1_hwing:          {type: plane, camera_pose: [0.6, 0, 0.1, 0, 0, 0]}
+  wsc_aircraft:           {type: plane, camera_pose: [0.5, 0, 0.08, 0, 0, 0]}
+  firtinam:               {type: plane, camera_pose: [0.49, 0, 0.02, 0, 0, 0]}
   sawppy:                 {type: rover}
   omni3rover:             {type: rover}
   omni4rover:             {type: rover}

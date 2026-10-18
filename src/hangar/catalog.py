@@ -39,6 +39,8 @@ class VehicleModel:
     params: list[str] = field(default_factory=list)
     model_dir: Path | None = None
     has_camera: bool = False
+    camera_pose: list[float] | None = None  # where an added camera goes (m, deg)
+    camera_parent: str | None = None  # link it is fixed to, if not base_link
     description: str = ""
 
     @property
@@ -147,6 +149,8 @@ class Catalog:
             params=params,
             model_dir=model_dir,
             has_camera="GstCameraPlugin" in text,
+            camera_pose=meta.get("camera_pose"),
+            camera_parent=meta.get("camera_parent"),
             description=meta.get("description", ""),
         )
 

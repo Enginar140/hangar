@@ -93,3 +93,26 @@ async def test_open_scenario(settings, tmp_path):
         await pilot.pause()
         assert app.scenario.name == "opened"
         assert app.query_one("#fleet", DataTable).row_count == 1
+
+
+async def test_editor_camera_switch(settings):
+    from textual.widgets import Switch
+
+    app = HangarApp(scenario=Scenario(name="t"), settings=settings)
+    async with app.run_test(size=(140, 50)) as pilot:
+        await pilot.press("a")
+        await pilot.pause()
+        editor = app.screen
+        editor.query_one("#model", Select).value = "testplane"  # has its own camera
+        await pilot.pause()
+        assert editor.query_one("#camera", Switch).value is True
+        editor.query_one("#model", Select).value = "testcopter"  # has none
+        await pilot.pause()
+        cam = editor.query_one("#camera", Switch)
+        assert cam.value is False
+        cam.value = True
+        editor.query_one("#v4l2", Input).value = "/dev/video2"
+        await pilot.click("#ok")
+        await pilot.pause()
+        c = app.scenario.vehicles[0].camera
+        assert c.enabled and c.v4l2_device == "/dev/video2"

@@ -174,8 +174,8 @@ class Supervisor:
             res = self.catalog.resolve_params(m)
             if res.missing:
                 warnings.append(f"{v.name}: parameter files not found: {', '.join(res.missing)}")
-            if v.camera and v.camera.enabled and not m.has_camera:
-                warnings.append(f"{v.name}: camera requested but {m.name} has no GstCameraPlugin")
+            if v.camera and v.camera.enabled and not m.needs_gazebo:
+                warnings.append(f"{v.name}: cameras need a Gazebo model; {m.name} uses built-in physics")
 
         if any(m.needs_gazebo for m in models.values()):
             if not sc.world:
@@ -192,8 +192,7 @@ class Supervisor:
             plan = PortPlan.build(
                 sc,
                 gazebo={n: m.needs_gazebo for n, m in models.items()},
-                cameras={v.name: models[v.name].has_camera and _camera_on(v)
-                         for v in sc.vehicles if v.name in models},
+                cameras={v.name: _wants_camera(models[v.name], v) for v in sc.vehicles if v.name in models},
             )
             errors += [f"port conflict: {c}" for c in plan.conflicts(check_system=check_ports)]
         except ValueError as e:
@@ -280,12 +279,17 @@ class Supervisor:
         assert self.run_dir and self.scenario.world
         world = self.catalog.worlds[self.scenario.world]
         gz_vehicles = [
-            WorldVehicle(v.model, v.ports, v.spec.pose_sdf) for v in self.vehicles if v.model.needs_gazebo
+            WorldVehicle(v.model, v.ports, v.spec.pose_sdf, v.spec.camera)
+            for v in self.vehicles if v.model.needs_gazebo
         ]
         ardupilot_models = {n for n, m in self.catalog.vehicles.items() if m.needs_gazebo}
         world_file = await asyncio.to_thread(
-            build_world, world.path, gz_vehicles, self.world_dir(), ardupilot_models
+            build_world, world.path, gz_vehicles, self.world_dir(), ardupilot_models,
+            self.settings.resolved_model_paths(),
         )
+        for v in gz_vehicles:
+            if v.adds_camera:
+                self.log(v.instance_name, f"camera added to the model (udp:{v.ports.camera})", "event")
         self.log("hangar", f"world generated: {world_file}", "event")
 
         self._env = self.gazebo_env()
@@ -466,8 +470,14 @@ class Supervisor:
         return self.preflight(check_ports=False).plan
 
 
-def _camera_on(spec: VehicleSpec) -> bool:
-    return spec.camera is None or spec.camera.enabled
+def _wants_camera(model: VehicleModel, spec: VehicleSpec) -> bool:
+    """A model's own camera streams unless switched off; any Gazebo model gets
+    one added when the scenario asks for it."""
+    if not model.needs_gazebo:
+        return False
+    if spec.camera is None:
+        return model.has_camera
+    return spec.camera.enabled
 
 
 def _join_paths(items: list[Path], existing: str | None) -> str:

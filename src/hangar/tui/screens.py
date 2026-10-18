@@ -10,7 +10,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Input, Label, Select, Static
+from textual.widgets import Button, DataTable, Input, Label, Select, Static, Switch
 
 from ..catalog import Catalog
 from ..doctor import Check
@@ -48,7 +48,7 @@ class VehicleEditor(_Dialog):
             options.append((label, name))
         pose = s.pose if s else [0, 0, 0.3, 0, 0, 0]
         pose_text = " ".join(f"{v:g}" for v in (pose[0], pose[1], pose[2], pose[5]))
-        with Vertical(classes="dialog"):
+        with VerticalScroll(classes="dialog compact"):
             yield Label(t("Edit vehicle") if s else t("Add vehicle"), classes="dialog-title")
             yield Label(t("Model"))
             yield Select(options, prompt=t("Pick a model"), id="model",
@@ -62,11 +62,28 @@ class VehicleEditor(_Dialog):
             yield Label(t("Parameters NAME=VALUE (comma separated)"))
             yield Input(", ".join(f"{k}={v:g}" for k, v in (s.params.items() if s else [])),
                         placeholder="SIM_WIND_SPD=5", id="params")
+            with Horizontal(classes="switch-row"):
+                yield Switch(self._camera_default(), id="camera")
+                yield Label(t("Camera (added to the model if it has none)"))
             yield Label(t("Camera to v4l2 device (optional)"))
             yield Input(s.camera.v4l2_device or "" if s and s.camera else "", placeholder="/dev/video2", id="v4l2")
             with Horizontal(classes="dialog-buttons"):
                 yield Button(t("OK"), variant="primary", id="ok")
                 yield Button(t("Cancel"), id="cancel")
+
+    def _camera_default(self) -> bool:
+        if self.spec and self.spec.camera:
+            return self.spec.camera.enabled
+        m = self.catalog.get(self.spec.model) if self.spec else None
+        return bool(m and m.has_camera)
+
+    @on(Select.Changed, "#model")
+    def _model_changed(self, event: Select.Changed) -> None:
+        m = self.catalog.get(str(event.value)) if isinstance(event.value, str) else None
+        cam = self.query_one("#camera", Switch)
+        cam.disabled = not (m and m.needs_gazebo)  # built-in physics has nothing to film
+        if m and not self.spec:
+            cam.value = m.has_camera
 
     @on(Button.Pressed, "#cancel")
     def _cancel(self) -> None:
@@ -87,20 +104,32 @@ class VehicleEditor(_Dialog):
                     k, v = item.split("=", 1)
                     params[k.strip().upper()] = float(v)
             outputs = [o.strip() for o in self.query_one("#outputs", Input).value.split(",") if o.strip()]
-            device = self.query_one("#v4l2", Input).value.strip()
+            device = self.query_one("#v4l2", Input).value.strip() or None
             name = self.query_one("#name", Input).value.strip() or None
+            camera = self._camera_spec(str(model), self.query_one("#camera", Switch).value, device)
             spec = VehicleSpec(
                 model=str(model),
                 name=name,
                 pose=pose or [0, 0, 0.3],
                 params=params,
                 outputs=outputs,
-                camera=CameraSpec(v4l2_device=device) if device else None,
+                camera=camera,
             )
         except ValueError as e:
             self.notify(str(e).splitlines()[0], severity="error")
             return
         self.dismiss(spec)
+
+
+    def _camera_spec(self, model: str, on: bool, device: str | None) -> CameraSpec | None:
+        """Keep pose/resolution set in the YAML; only the switch and device are edited here."""
+        m = self.catalog.get(model)
+        base = self.spec.camera if self.spec and self.spec.camera else CameraSpec()
+        if on and m and m.needs_gazebo:
+            return base.model_copy(update={"enabled": True, "v4l2_device": device})
+        if m and m.has_camera:
+            return base.model_copy(update={"enabled": False})  # switch off the model's own camera
+        return None
 
 
 class PathDialog(_Dialog):

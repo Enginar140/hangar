@@ -76,6 +76,7 @@ TR: dict[str, str] = {
     "Pose x y z yaw (m, deg)": "Konum x y z yaw (m, derece)",
     "Extra outputs (comma separated)": "Ek çıkışlar (virgülle)",
     "Camera to v4l2 device (optional)": "Kamerayı v4l2 cihazına aktar (opsiyonel)",
+    "Camera (added to the model if it has none)": "Kamera (modelde yoksa eklenir)",
     "Parameters NAME=VALUE (comma separated)": "Parametreler AD=DEĞER (virgülle)",
     "Scenario file": "Senaryo dosyası",
     "Source": "Kaynak",
