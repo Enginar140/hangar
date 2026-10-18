@@ -43,6 +43,17 @@ def test_plan_follows_ardupilot_instance_layout():
     assert v2.name == "plane_2" and v2.serial0 == 5780
 
 
+def test_first_instance_moves_every_port():
+    sc = scenario(first_instance=2, outputs=["udp:127.0.0.1:{15000+i}"])
+    plan = PortPlan.build(sc, gazebo={"plane": True}, cameras={"plane": True})
+    v0, v1, _ = plan.vehicles
+    assert (v0.index, v0.instance, v0.sysid) == (0, 2, 1)
+    assert (v0.serial0, v0.serial1, v0.serial2, v0.fdm, v0.camera) == (5780, 5782, 5783, 9022, 5602)
+    assert v0.camera_send.port == 5702 and v1.serial0 == 5790
+    assert str(v0.outputs[0]) == "udp:127.0.0.1:15000"  # {i} stays the vehicle's place in the list
+    assert "first_instance: 2" in sc.dump()
+
+
 def test_outputs_merge_and_dedupe():
     sc = scenario(outputs=["udp:127.0.0.1:14550", "udp:127.0.0.1:{15000+i}"])
     sc.vehicles[1].outputs = ["udp:127.0.0.1:14550", "tcpin:0.0.0.0:{6000+i}"]

@@ -444,7 +444,7 @@ class Supervisor:
 
         argv = [
             str(exe),
-            "-I", str(v.ports.index),
+            "-I", str(v.ports.instance),
             "--model", m.sitl_model,
             "--speedup", f"{self.scenario.speedup:g}",
             "--sysid", str(v.ports.sysid),

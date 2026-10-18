@@ -134,6 +134,9 @@ class Scenario(BaseModel):
     world: str | None = None
     headless: bool = False
     speedup: float = Field(default=1.0, gt=0)
+    # SITL instance of the first vehicle; each instance moves its ports by 10. Raise it to run
+    # next to another SITL (which uses instance 0 and tcp:5760 unless told otherwise).
+    first_instance: int = Field(default=0, ge=0, le=100)
     home: Home = Field(default_factory=Home)
     outputs: list[str] = Field(default_factory=lambda: ["udp:127.0.0.1:14550"])
     vehicles: list[VehicleSpec] = Field(default_factory=list)

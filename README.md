@@ -121,8 +121,8 @@ The Logs tab can **Save** the view with its current filter to a file,
 | `q` | quit (stops the simulation) | | |
 
 Vehicle commands (buttons or command line): `arm [force]`, `disarm`, `mode GUIDED`
-(or just `GUIDED`), `takeoff 30`, `rtl`, `land`, `param set NAME VALUE`, and
-`!<MAVProxy command>` while the map is open.
+(or just `GUIDED`), `takeoff 30`, `rtl`, `land`, `goto LAT LON [ALT]`, `param set NAME VALUE`,
+`param get NAME`, `param fetch`, and `!<MAVProxy command>` while the map is open.
 
 The UI is available in English and Turkish and follows `$LANG`. You can also
 pick a language with `hangar config set language tr`.
@@ -133,6 +133,7 @@ pick a language with `hangar config set language tr`.
 name: two-planes
 world: skywalker_x8_runway        # omit for built-in physics only
 speedup: 1
+first_instance: 0                 # raise it to run next to another SITL (ports move 10 per instance)
 outputs:                          # every vehicle gets these
   - udp:127.0.0.1:14550           # QGroundControl / Mission Planner
   - udp:127.0.0.1:{15000+i}       # one port per vehicle; {i} = index, {sysid} = MAVLink id

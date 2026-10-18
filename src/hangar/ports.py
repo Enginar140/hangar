@@ -100,7 +100,7 @@ class Endpoint:
 
 @dataclass
 class VehiclePorts:
-    index: int
+    index: int  # position in the scenario; {i} in output templates
     name: str
     sysid: int
     serial0: int
@@ -110,6 +110,11 @@ class VehiclePorts:
     camera_mode: str | None = None  # "relay" | "direct" | None (no camera)
     camera_send: Endpoint | None = None  # where the camera plugin itself sends
     camera_targets: list[Endpoint] = field(default_factory=list)  # other machines / ports
+    instance: int = -1  # the SITL's -I; its ports follow from it. Defaults to index.
+
+    def __post_init__(self) -> None:
+        if self.instance < 0:
+            self.instance = self.index
 
     @property
     def has_camera(self) -> bool:
@@ -117,11 +122,11 @@ class VehiclePorts:
 
     @property
     def serial1(self) -> int:
-        return SERIAL1_BASE + STRIDE * self.index
+        return SERIAL1_BASE + STRIDE * self.instance
 
     @property
     def serial2(self) -> int:
-        return SERIAL2_BASE + STRIDE * self.index
+        return SERIAL2_BASE + STRIDE * self.instance
 
 
 @dataclass
@@ -142,6 +147,7 @@ class PortPlan:
         for i, v in enumerate(scenario.vehicles):
             name = v.name or f"vehicle{i}"
             sysid = i + 1
+            n = scenario.first_instance + i
             urls = list(scenario.outputs) + list(v.outputs)
             endpoints: list[Endpoint] = []
             for u in urls:
@@ -152,10 +158,11 @@ class PortPlan:
                 index=i,
                 name=name,
                 sysid=sysid,
-                serial0=SERIAL0_BASE + STRIDE * i,
-                fdm=FDM_BASE + STRIDE * i if gazebo.get(name) else None,
+                serial0=SERIAL0_BASE + STRIDE * n,
+                fdm=FDM_BASE + STRIDE * n if gazebo.get(name) else None,
                 camera=None,
                 outputs=endpoints,
+                instance=n,
             )
             if cameras.get(name):
                 cam = v.camera
@@ -164,8 +171,8 @@ class PortPlan:
                     vp.camera_mode, vp.camera_send, vp.camera_targets = "direct", targets[0], targets
                 else:
                     vp.camera_mode = "relay"
-                    vp.camera = CAMERA_BASE + i
-                    vp.camera_send = Endpoint("udp", "127.0.0.1", CAMERA_RELAY_BASE + i)
+                    vp.camera = CAMERA_BASE + n
+                    vp.camera_send = Endpoint("udp", "127.0.0.1", CAMERA_RELAY_BASE + n)
                     vp.camera_targets = [t for t in targets if t != Endpoint("udp", "127.0.0.1", vp.camera)]
             out.append(vp)
         return cls(out)
@@ -204,13 +211,15 @@ class PortPlan:
         if check_system:
             for (proto, port), owner in seen.items():
                 if port_in_use(proto, port):
-                    problems.append(f"{proto}/{port} ({owner}) is already in use by another program")
+                    problems.append(f"{proto}/{port} ({owner}) is already in use by another program"
+                                    + (" (another SITL? set first_instance in the scenario)"
+                                       if owner.endswith("SITL") else ""))
         return problems
 
     def rows(self) -> list[dict[str, str]]:
         return [
             {
-                "index": str(v.index),
+                "index": str(v.instance),
                 "name": v.name,
                 "sysid": str(v.sysid),
                 "mavlink": f"tcp:{v.serial0}",

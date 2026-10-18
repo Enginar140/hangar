@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **`first_instance`** in a scenario: start the SITLs at another instance number (every port
+  moves by 10 per instance), to run next to a SITL that is already running. The busy-port error
+  suggests it.
+- **`goto LAT LON [ALT]`** command: fly there in GUIDED (MAV_CMD_DO_REPOSITION), at the current
+  altitude unless one is given.
+- **Parameters**: `param fetch` reads the whole list (asking again for any value that got lost),
+  `param get NAME`; every value seen is kept, also ones set by a ground station. Setting or
+  reading one parameter asks again once when a slow simulation answers late.
+- The firmware version is read from the autopilot (AUTOPILOT_VERSION).
+
 ## 0.3.2 (2026-10-18)
 
 - **Vehicles without a pose are placed automatically**, 15 m apart and clear of placed ones,

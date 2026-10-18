@@ -24,6 +24,9 @@ class FakeSitl:
         self.dec.robust_parsing = True
         self.received: list = []
         self.mode = 0
+        self.params = {"ARMING_CHECK": 1.0, "WPNAV_SPEED": 500.0, "SIM_WIND_SPD": 0.0}
+        self.drop_first_list = {1}  # indexes lost in the first full-list answer
+        self.positions: list = []
 
     async def handle(self, reader, writer):
         async def talk():
@@ -39,12 +42,42 @@ class FakeSitl:
             while data := await reader.read(4096):
                 for m in self.dec.parse_buffer(data) or []:
                     self.received.append(m)
-                    if m.get_type() == "COMMAND_LONG":
+                    kind = m.get_type()
+                    if kind == "COMMAND_LONG" and m.command == mav.MAV_CMD_REQUEST_MESSAGE:
+                        writer.write(self.enc.autopilot_version_encode(
+                            0, 4 << 24 | 7 << 16 | 2 << 8 | 255, 0, 0, 0, b"\0" * 8, b"\0" * 8, b"\0" * 8,
+                            0, 0, 0).pack(self.enc))
+                    elif kind == "COMMAND_LONG":
                         if m.command == mav.MAV_CMD_DO_SET_MODE:
                             self.mode = int(m.param2)
                         writer.write(self.enc.command_ack_encode(m.command, 0).pack(self.enc))
+                    elif kind == "COMMAND_INT":
+                        self.positions.append((m.x, m.y, m.z, m.frame))
+                        writer.write(self.enc.command_ack_encode(m.command, 0).pack(self.enc))
+                    elif kind == "PARAM_REQUEST_LIST":
+                        for i in range(len(self.params)):
+                            if i not in self.drop_first_list:
+                                self.send_param(writer, i)
+                        self.drop_first_list = set()
+                    elif kind == "PARAM_REQUEST_READ":
+                        names = list(self.params)
+                        pid = m.param_id.rstrip("\x00") if isinstance(m.param_id, str) else m.param_id
+                        if m.param_index >= 0:
+                            self.send_param(writer, m.param_index)
+                        elif pid in self.params:
+                            self.send_param(writer, names.index(pid))
+                    elif kind == "PARAM_SET":
+                        pid = m.param_id.rstrip("\x00") if isinstance(m.param_id, str) else m.param_id
+                        self.params[pid] = m.param_value
+                        self.send_param(writer, list(self.params).index(pid))
         finally:
             task.cancel()
+
+    def send_param(self, writer, i: int) -> None:
+        name = list(self.params)[i]
+        ptype = mav.MAV_PARAM_TYPE_INT8 if name == "ARMING_CHECK" else mav.MAV_PARAM_TYPE_REAL32
+        writer.write(self.enc.param_value_encode(
+            name.encode(), self.params[name], ptype, len(self.params), i).pack(self.enc))
 
 
 async def test_link_routes_and_commands():
@@ -89,6 +122,33 @@ async def test_link_routes_and_commands():
     finally:
         await link.stop()
         gcs_transport.close()
+        server.close()
+
+
+async def test_parameters_and_goto():
+    sitl = FakeSitl(sysid=2)
+    port = free_port()
+    server = await asyncio.start_server(sitl.handle, "127.0.0.1", port)
+    link = VehicleLink("v", 2, port, [])
+    await link.start()
+    try:
+        assert await link.wait_connected(5)
+        params = await link.fetch_params(timeout=10)  # one value is lost and asked for again
+        assert params == sitl.params and link.params_complete
+        assert link.telemetry.version == "4.7.2"
+        assert link.param_is_int("ARMING_CHECK") and not link.param_is_int("WPNAV_SPEED")
+        before = link.params_changed
+        assert await link.run("param set wpnav_speed 800") == "WPNAV_SPEED = 800"
+        assert link.params["WPNAV_SPEED"] == 800 and link.params_changed > before
+        assert await link.run("param get SIM_WIND_SPD") == "SIM_WIND_SPD = 0"
+        assert (await link.run("goto 40.001 29.002 25")).startswith("going to 40.001000, 29.002000")
+        x, y, z, frame = sitl.positions[-1]
+        assert (x, y, z, frame) == (400010000, 290020000, 25.0, mav.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT)
+        await asyncio.sleep(0.3)
+        await link.run("goto 40 29")  # keeps the current altitude (12.5 m)
+        assert sitl.positions[-1][2] == 12.5
+    finally:
+        await link.stop()
         server.close()
 
 

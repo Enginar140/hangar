@@ -117,8 +117,8 @@ Terminalden: `hangar logs -f` (canlı), `hangar logs -w` (sadece uyarılar),
 | `m` | ortak harita (MAVProxy) | `q` | çık (simülasyonu durdurur) |
 
 Araç komutları (butonlardan ya da komut satırından): `arm [force]`, `disarm`,
-`mode GUIDED` (ya da sadece `GUIDED`), `takeoff 30`, `rtl`, `land`,
-`param set AD DEĞER`; harita açıkken `!<MAVProxy komutu>`.
+`mode GUIDED` (ya da sadece `GUIDED`), `takeoff 30`, `rtl`, `land`, `goto ENLEM BOYLAM [İRTİFA]`,
+`param set AD DEĞER`, `param get AD`, `param fetch`; harita açıkken `!<MAVProxy komutu>`.
 
 Arayüz Türkçe ve İngilizce destekler ve dili `$LANG`'a göre seçer. Elle
 ayarlamak için: `hangar config set language tr`.
@@ -128,6 +128,7 @@ ayarlamak için: `hangar config set language tr`.
 ```yaml
 name: iki-ucak
 world: skywalker_x8_runway        # sadece dahili fizik kullanacaksan yazma
+first_instance: 0                 # başka bir SITL'in yanında çalıştırmak için artır (her biri portları 10 kaydırır)
 outputs:                          # her araca uygulanır
   - udp:127.0.0.1:14550           # QGroundControl / Mission Planner
   - udp:127.0.0.1:{15000+i}       # araç başına port; {i} = sıra, {sysid} = MAVLink id

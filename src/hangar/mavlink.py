@@ -25,6 +25,9 @@ HANGAR_COMPID = mav.MAV_COMP_ID_MISSIONPLANNER
 HEARTBEAT_TIMEOUT = 3.0
 ACK_TIMEOUT = 4.0
 PEER_TIMEOUT = 10.0
+PARAM_TIMEOUT = 60.0  # a full parameter list; slow simulations send it slowly
+PARAM_QUIET = 1.5  # no PARAM_VALUE for this long: ask again for the missing ones
+PARAM_WAITS = (3.0, 6.0)  # one parameter: wait, ask again, wait longer
 
 TextCallback = Callable[[str, str, str], None]  # (vehicle, level, text)
 
@@ -78,6 +81,7 @@ class Telemetry:
     ready: bool | None = None  # pre-arm checks passing
     rx_messages: int = 0
     sim_speed: float | None = None  # simulated seconds per real second, from the autopilot's clock
+    version: str | None = None  # firmware version, e.g. "4.7.2"
 
     @property
     def alive(self) -> bool:
@@ -231,6 +235,14 @@ class VehicleLink:
         self._stopping = False
         self._acks: dict[int, asyncio.Future] = {}
         self._param_waits: dict[str, asyncio.Future] = {}
+        # every parameter value seen, from our requests or anyone else's (a ground station's)
+        self.params: dict[str, float] = {}
+        self.param_types: dict[str, int] = {}
+        self.param_count: int | None = None
+        self.params_changed = 0  # bumped on every new value, for watchers that poll
+        self._param_index: dict[int, str] = {}
+        self._param_seen = asyncio.Event()
+        self._fetching: asyncio.Task | None = None
         self._connected = asyncio.Event()
         self._clock_samples: deque[tuple[float, int]] = deque()
 
@@ -358,6 +370,9 @@ class VehicleLink:
                 self._connected.set()
                 # ask for telemetry as soon as the vehicle is there (again, after a reconnect)
                 self._send(self._mav.request_data_stream_encode(self.sysid, 1, mav.MAV_DATA_STREAM_ALL, 4, 1))
+                self._send(self._mav.command_long_encode(
+                    self.sysid, 1, mav.MAV_CMD_REQUEST_MESSAGE, 0, mav.MAVLINK_MSG_ID_AUTOPILOT_VERSION,
+                    0, 0, 0, 0, 0, 0))
         elif kind == "GLOBAL_POSITION_INT":
             t.lat, t.lon = m.lat / 1e7, m.lon / 1e7
             t.alt_rel = m.relative_alt / 1000.0
@@ -373,6 +388,9 @@ class VehicleLink:
                 t.ready = bool(m.onboard_control_sensors_health & prearm)
         elif kind == "GPS_RAW_INT":
             t.gps_fix, t.satellites = m.fix_type, m.satellites_visible
+        elif kind == "AUTOPILOT_VERSION":
+            v = m.flight_sw_version
+            t.version = f"{v >> 24 & 0xFF}.{v >> 16 & 0xFF}.{v >> 8 & 0xFF}"
         elif kind == "STATUSTEXT":
             self._text(_SEVERITY.get(m.severity, "info"), m.text.rstrip("\x00"))
         elif kind == "COMMAND_ACK":
@@ -380,10 +398,23 @@ class VehicleLink:
             if fut and not fut.done():
                 fut.set_result(m.result)
         elif kind == "PARAM_VALUE":
-            pid = m.param_id.rstrip("\x00") if isinstance(m.param_id, str) else m.param_id
+            pid = m.param_id.rstrip("\x00") if isinstance(m.param_id, str) else m.param_id.decode()
+            pid = pid.rstrip("\x00")
+            self._param_value(pid, m.param_value, m.param_type, m.param_count, m.param_index)
             fut = self._param_waits.pop(pid, None)
             if fut and not fut.done():
                 fut.set_result(m.param_value)
+
+    def _param_value(self, name: str, value: float, ptype: int, count: int, index: int) -> None:
+        if self.params.get(name) != value or name not in self.params:
+            self.params_changed += 1
+        self.params[name] = value
+        self.param_types[name] = ptype
+        if count and count != 0xFFFF:
+            self.param_count = count
+        if index != 0xFFFF:
+            self._param_index[index] = name
+        self._param_seen.set()
 
     def _clock(self, boot_ms: int) -> None:
         """Compare the autopilot's clock (simulated time in SITL) with the real one."""
@@ -446,20 +477,102 @@ class VehicleLink:
         return await self.command(mav.MAV_CMD_COMPONENT_ARM_DISARM, 0, 21196 if force else 0)
 
     async def set_param(self, name: str, value: float) -> float:
-        self._require_link()
         name = name.upper()
+        msg = self._mav.param_set_encode(self.sysid, 1, name.encode(), float(value), mav.MAV_PARAM_TYPE_REAL32)
+        return await self._param_request(name, msg, f"no PARAM_VALUE for {name}")
+
+    async def _param_request(self, name: str, msg, error: str) -> float:
+        """Send, wait for the PARAM_VALUE, send once more if it does not come (a slow
+        simulation answers in simulated time, so a busy machine can take seconds)."""
+        self._require_link()
         fut = asyncio.get_running_loop().create_future()
         self._param_waits[name] = fut
-        self._send(
-            self._mav.param_set_encode(
-                self.sysid, 1, name.encode(), float(value), mav.MAV_PARAM_TYPE_REAL32
-            )
-        )
         try:
-            return await asyncio.wait_for(fut, ACK_TIMEOUT)
+            for wait in PARAM_WAITS:
+                self._send(msg)
+                try:
+                    return await asyncio.wait_for(asyncio.shield(fut), wait)
+                except TimeoutError:
+                    self._require_link()
+            raise CommandError(error)
+        finally:
+            if self._param_waits.get(name) is fut:
+                del self._param_waits[name]
+            fut.cancel()
+
+    def param_is_int(self, name: str) -> bool:
+        return self.param_types.get(name, mav.MAV_PARAM_TYPE_REAL32) not in (
+            mav.MAV_PARAM_TYPE_REAL32, mav.MAV_PARAM_TYPE_REAL64)
+
+    @property
+    def params_complete(self) -> bool:
+        return self.param_count is not None and len(self._param_index) >= self.param_count
+
+    async def fetch_params(self, timeout: float = PARAM_TIMEOUT) -> dict[str, float]:
+        """The whole parameter list. Missing values are asked for one by one; callers
+        that ask at the same time share one download."""
+        if not self._fetching or self._fetching.done():
+            self._fetching = asyncio.create_task(self._fetch_params(timeout))
+        await asyncio.shield(self._fetching)
+        return self.params
+
+    async def _fetch_params(self, timeout: float) -> None:
+        self._require_link()
+        self._param_index.clear()
+        self.param_count = None
+        self._send(self._mav.param_request_list_encode(self.sysid, 1))
+        deadline = time.monotonic() + timeout
+        while not self.params_complete:
+            if time.monotonic() > deadline:
+                got = len(self._param_index)
+                raise CommandError(f"parameter list incomplete: {got} of {self.param_count or '?'}")
+            self._param_seen.clear()
+            try:
+                await asyncio.wait_for(self._param_seen.wait(), PARAM_QUIET)
+                continue
+            except TimeoutError:
+                pass
+            self._require_link()
+            if self.param_count is None:  # the request itself was lost
+                self._send(self._mav.param_request_list_encode(self.sysid, 1))
+                continue
+            missing = [i for i in range(self.param_count) if i not in self._param_index]
+            for i in missing[:50]:
+                self._send(self._mav.param_request_read_encode(self.sysid, 1, b"", i))
+
+    async def get_param(self, name: str) -> float:
+        name = name.upper()
+        msg = self._mav.param_request_read_encode(self.sysid, 1, name.encode(), -1)
+        return await self._param_request(name, msg, f"no parameter {name}")
+
+    async def command_int(self, command: int, frame: int, *params: float, x: int = 0, y: int = 0,
+                          z: float = 0.0) -> str:
+        self._require_link()
+        p = list(params) + [0.0] * (4 - len(params))
+        fut = asyncio.get_running_loop().create_future()
+        self._acks[command] = fut
+        self._send(self._mav.command_int_encode(self.sysid, 1, frame, command, 0, 0, *p, x, y, z))
+        try:
+            result = await asyncio.wait_for(fut, ACK_TIMEOUT)
         except TimeoutError as e:
-            self._param_waits.pop(name, None)
-            raise CommandError(f"no PARAM_VALUE for {name}") from e
+            self._acks.pop(command, None)
+            raise CommandError("no response from vehicle") from e
+        text = _RESULT.get(result, str(result))
+        if result not in (mav.MAV_RESULT_ACCEPTED, mav.MAV_RESULT_IN_PROGRESS):
+            raise CommandError(text)
+        return text
+
+    async def goto(self, lat: float, lon: float, altitude: float | None = None) -> str:
+        """Fly to a point (switches to GUIDED). The altitude is above home; by default the current one."""
+        if altitude is None:
+            altitude = self.telemetry.alt_rel
+        if altitude is None:
+            raise CommandError("altitude not known yet; give one")
+        await self.command_int(
+            mav.MAV_CMD_DO_REPOSITION, mav.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+            -1, mav.MAV_DO_REPOSITION_FLAGS_CHANGE_MODE, 0, float("nan"),
+            x=round(lat * 1e7), y=round(lon * 1e7), z=altitude)
+        return f"going to {lat:.6f}, {lon:.6f} at {altitude:g} m"
 
     async def takeoff(self, altitude: float) -> str:
         t = self.telemetry.mav_type
@@ -522,6 +635,13 @@ class VehicleLink:
                 return await self.rtl()
             if cmd == "land":
                 return await self.land()
+            if cmd == "goto" and len(args) >= 2:
+                alt = float(args[2]) if len(args) > 2 else None
+                return await self.goto(float(args[0]), float(args[1]), alt)
+            if cmd == "param" and len(args) == 2 and args[0].lower() in ("get", "show"):
+                return f"{args[1].upper()} = {await self.get_param(args[1]):g}"
+            if cmd == "param" and args and args[0].lower() == "fetch":
+                return f"{len(await self.fetch_params())} parameters"
             if cmd in ("param", "set") and len(args) >= 2:
                 if args[0].lower() == "set":
                     args = args[1:]
@@ -533,7 +653,7 @@ class VehicleLink:
             raise CommandError(f"bad number: {e}") from e
         raise CommandError(
             "commands: arm [force], disarm [force], mode <NAME>, <MODE>, takeoff [alt], rtl, land, "
-            "param set <NAME> <VALUE>"
+            "goto <LAT> <LON> [alt], param set <NAME> <VALUE>, param get <NAME>, param fetch"
         )
 
 
