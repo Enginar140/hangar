@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Worlds from real places use hangar-earth 0.2.0: **OpenStreetMap buildings** (one colliding mesh)
+  and **your own data** for sharper worlds. `hangar world create` passes `--no-buildings`,
+  `--dem`, `--imagery`, `--imagery-url`, `--imagery-zoom`, `--imagery-credit`, `--texture` (up to
+  8192) and `--resolution` (up to 4097); the Scenario-tab dialog has a buildings switch and
+  fields for your own DEM and orthophoto.
+- An older installed hangar-earth is noticed and an update is offered.
+
 ## 0.3.0 (2026-10-18)
 
 ### Worlds from real places

@@ -289,6 +289,13 @@ gerçek koordinatlarında durur, araçlar da orada başlar: GPS, QGroundControl 
 MAVProxy haritası gerçek yeri gösterir. Araçlar `pose` konumunda yere konur;
 yani `z` arazinin üstündeki yüksekliktir.
 
+OpenStreetMap **binaları** da gelir ve fizikte katıdır; istemezsen
+`--no-buildings` ile kapatabilirsin. Daha keskin bir dünya için kendi verini
+verebilirsin: `--dem arazi.tif` ve `--imagery ortofoto.tif` (herhangi bir
+koordinat sistemi, örneğin bir drone haritalamasından) ya da kullanım hakkın
+olan bir karo servisi için `--imagery-url`. Senaryo sekmesindeki pencerede de
+binalar anahtarı ve bu iki dosya alanı var.
+
 ![Ankara'nın doğusundaki tepeler Gazebo'da](https://raw.githubusercontent.com/Enginar140/hangar-earth/main/docs/images/oblique.jpg)
 
 ## Desteklenen sistemler

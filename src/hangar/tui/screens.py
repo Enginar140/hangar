@@ -644,6 +644,13 @@ class WorldCreateDialog(_Dialog):
                 yield Select(self.SIZES, id="size", allow_blank=False, value=3000, compact=True)
             yield Label(t("Name"))
             yield Input(placeholder="ankara_hills", id="name")
+            with Horizontal(classes="switch-row"):
+                yield Switch(True, id="buildings")
+                yield Label(t("OpenStreetMap buildings"))
+            yield Label(t("Your own elevation GeoTIFF (optional, sharper terrain)"))
+            yield Input(placeholder="~/survey/dsm.tif", id="dem")
+            yield Label(t("Your own orthophoto GeoTIFF (optional, sharper ground)"))
+            yield Input(placeholder="~/survey/orthophoto.tif", id="imagery")
             yield Static(t("WORLD_CREATE_HELP"), classes="hint-text")
             yield Static(id="world-problem")
             with Horizontal(classes="dialog-buttons"):
@@ -662,7 +669,13 @@ class WorldCreateDialog(_Dialog):
             return None
         default = f"place_{lat:.3f}_{lon:.3f}".replace(".", "_").replace("-", "m")
         name = self.query_one("#name", Input).value.strip() or default
-        return {"lat": lat, "lon": lon, "size": int(self.query_one("#size", Select).value), "name": name}
+        values = {"lat": lat, "lon": lon, "size": int(self.query_one("#size", Select).value), "name": name,
+                  "buildings": self.query_one("#buildings", Switch).value}
+        for key in ("dem", "imagery"):
+            path = self.query_one(f"#{key}", Input).value.strip()
+            if path:
+                values[key] = str(Path(path).expanduser())
+        return values
 
     @on(Input.Changed)
     @on(Select.Changed)
@@ -679,6 +692,8 @@ class WorldCreateDialog(_Dialog):
             problem = t("The name may only contain letters, digits, '_' and '-'.")
         elif v["name"] in self.existing:
             problem = t("A world with this name already exists.")
+        elif any(k in v and not Path(v[k]).is_file() for k in ("dem", "imagery")):
+            problem = t("A GeoTIFF file you gave does not exist.")
         self.query_one("#world-problem", Static).update(f"[yellow]{escape(problem)}[/]" if problem else "")
         self.query_one("#ok", Button).disabled = bool(problem)
         return not problem

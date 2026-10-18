@@ -299,6 +299,13 @@ coordinates, so vehicles start there: their GPS, QGroundControl and the
 MAVProxy map all show the real place. Each vehicle is placed on the ground at
 its `pose`, so `z` is the height above the terrain.
 
+OpenStreetMap **buildings** are included and collide. Use `--no-buildings` to
+leave them out. For sharper worlds, give your own data:
+`--dem survey_dsm.tif` and `--imagery orthophoto.tif` (any coordinate system,
+for example from a drone survey), or `--imagery-url` for a tile service you
+are allowed to use. The Scenario-tab dialog has the buildings switch and the
+two file fields.
+
 ![Hills east of Ankara in Gazebo](https://raw.githubusercontent.com/Enginar140/hangar-earth/main/docs/images/oblique.jpg)
 
 ## Supported systems

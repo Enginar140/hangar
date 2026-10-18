@@ -827,12 +827,16 @@ class HangarApp(App):
         from .. import sources
 
         exe = self.settings.hangar_earth()
-        if exe is None:
-            src = sources.load_manifest()["hangar_earth"]
-            question = t("HANGAR_EARTH_OFFER").replace("{license}", src.license)
+        src = sources.load_manifest()["hangar_earth"]
+        if exe is None or src.outdated:
+            question = t("HANGAR_EARTH_OFFER" if exe is None else "HANGAR_EARTH_UPDATE").replace(
+                "{license}", src.license).replace("{old}", src.installed_ref or "").replace("{new}", src.ref)
             if not await self.push_screen_wait(ConfirmDialog(question, ok=t("Install"), variant="primary")):
-                return
-            self.supervisor.log("hangar-earth", f"installing {src.title}", "event")
+                if exe is None:
+                    return
+                src = None  # keep the installed version
+        if src is not None and (exe is None or src.outdated):
+            self.supervisor.log("hangar-earth", f"installing {src.title} {src.ref}", "event")
             try:
                 await asyncio.to_thread(sources._python_env, src, lambda line: self.call_from_thread(
                     self.supervisor.log, "hangar-earth", line, "info"))
@@ -847,6 +851,11 @@ class HangarApp(App):
         self.notify(t("Building the world, this takes about 15-60 seconds..."), timeout=6)
         argv = [str(exe), "create", "--lat", str(params["lat"]), "--lon", str(params["lon"]),
                 "--size", str(params["size"]), "--name", name, "--out", str(out)]
+        if not params.get("buildings", True):
+            argv.append("--no-buildings")
+        for key in ("dem", "imagery"):
+            if params.get(key):
+                argv += [f"--{key}", params[key]]
         proc = await asyncio.create_subprocess_exec(*argv, stdout=asyncio.subprocess.PIPE,
                                                     stderr=asyncio.subprocess.STDOUT)
         assert proc.stdout

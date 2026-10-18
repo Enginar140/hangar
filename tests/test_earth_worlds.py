@@ -82,3 +82,36 @@ print("generated", name)
     assert (paths.data_dir() / "worlds" / "made_here" / "made_here.sdf").exists()
     assert "made_here" in Catalog(settings).worlds
     assert main(["world", "create", "--lat", "39.88", "--lon", "33.23", "--name", "made_here"]) == 1  # exists
+
+
+def test_cli_passes_options_to_hangar_earth(settings, tmp_path, monkeypatch):
+    gen = tmp_path / "bin" / "hangar-earth"
+    gen.parent.mkdir()
+    record = tmp_path / "argv.txt"
+    gen.write_text(f"""#!{sys.executable}
+import sys, pathlib
+pathlib.Path({str(record)!r}).write_text(" ".join(sys.argv[1:]))
+a = sys.argv; out = pathlib.Path(a[a.index("--out") + 1]); out.mkdir(parents=True)
+(out / (a[a.index("--name") + 1] + ".sdf")).write_text("<sdf/>")
+""")
+    gen.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{gen.parent}:/usr/bin:/bin")
+    dem = tmp_path / "dsm.tif"
+    dem.write_bytes(b"x")
+    assert main(["world", "create", "--lat", "39.92", "--lon", "32.85", "--size", "800", "--name", "opts",
+                 "--no-buildings", "--dem", str(dem), "--texture", "8192"]) == 0
+    argv = record.read_text()
+    assert "--no-buildings" in argv and f"--dem {dem.resolve()}" in argv and "--texture 8192" in argv
+    assert "--imagery" not in argv
+
+
+def test_outdated_install_is_noticed():
+    from hangar import sources
+
+    src = sources.load_manifest()["hangar_earth"]
+    assert src.installed_ref is None and not src.outdated
+    src.path.mkdir(parents=True)
+    (src.path / ".hangar-fetched").write_text("0.1.0")
+    assert src.installed_ref == "0.1.0" and src.outdated
+    (src.path / ".hangar-fetched").write_text(src.ref)
+    assert not src.outdated

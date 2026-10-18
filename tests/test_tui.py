@@ -245,4 +245,30 @@ async def test_world_create_dialog_validates(settings):
         assert not ok.disabled
         ok.press()
         await pilot.pause()
-    assert results == [{"lat": 39.88, "lon": 33.23, "size": 3000, "name": "ankara_hills"}]
+    assert results == [{"lat": 39.88, "lon": 33.23, "size": 3000, "name": "ankara_hills", "buildings": True}]
+
+
+async def test_world_create_dialog_checks_own_files(settings, tmp_path):
+    from textual.widgets import Switch
+
+    from hangar.tui.screens import WorldCreateDialog
+
+    dem = tmp_path / "dsm.tif"
+    dem.write_bytes(b"x")
+    app = HangarApp(scenario=Scenario(name="t"), settings=settings)
+    results = []
+    async with app.run_test(size=(140, 60)) as pilot:
+        app.push_screen(WorldCreateDialog(set()), results.append)
+        await pilot.pause()
+        dlg = app.screen
+        dlg.query_one("#lat", Input).value = "39.92"
+        dlg.query_one("#lon", Input).value = "32.85"
+        dlg.query_one("#dem", Input).value = str(tmp_path / "missing.tif")
+        await pilot.pause()
+        assert dlg.query_one("#ok", Button).disabled
+        dlg.query_one("#dem", Input).value = str(dem)
+        dlg.query_one("#buildings", Switch).value = False
+        await pilot.pause()
+        dlg.query_one("#ok", Button).press()
+        await pilot.pause()
+    assert results[0]["dem"] == str(dem) and results[0]["buildings"] is False

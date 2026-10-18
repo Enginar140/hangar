@@ -190,25 +190,36 @@ def cmd_world(args, settings: Settings) -> int:
     from . import sources
 
     exe = settings.hangar_earth()
-    if exe is None:
-        src = sources.load_manifest()["hangar_earth"]
-        console.print(f"[b]{src.title}[/] is not installed.\n  {src.url} @ {src.ref}\n"
+    src = sources.load_manifest()["hangar_earth"]
+    if exe is None or src.outdated:
+        state = f"is {src.installed_ref}, {src.ref} is available" if src.outdated else "is not installed"
+        console.print(f"[b]{src.title}[/] {state}.\n  {src.url} @ {src.ref}\n"
                       f"  license: [yellow]{src.license}[/]\n  {src.purpose}")
-        if not _confirm("Install it now?", args.yes):
-            return 1
-        try:
-            sources.fetch(src)
-        except Exception as e:  # noqa: BLE001
-            err.print(f"[red]install failed: {e}[/]")
-            return 1
-        exe = settings.hangar_earth()
-        assert exe
+        if not _confirm("Install it now?" if exe is None else "Update it now?", args.yes):
+            if exe is None:
+                return 1
+        else:
+            try:
+                sources.fetch(src)
+            except Exception as e:  # noqa: BLE001
+                err.print(f"[red]install failed: {e}[/]")
+                return 1
+            exe = settings.hangar_earth()
+            assert exe
     out = paths.data_dir() / "worlds" / args.name
     if out.exists() and not args.force:
         err.print(f"[red]{out} exists[/] (use --force to replace it)")
         return 1
     argv = [str(exe), "create", "--lat", str(args.lat), "--lon", str(args.lon), "--size", str(args.size),
-            "--name", args.name, "--out", str(out), "--texture", str(args.texture)]
+            "--name", args.name, "--out", str(out)]
+    for flag in ("texture", "resolution", "dem", "imagery", "imagery_url", "imagery_zoom", "imagery_credit"):
+        value = getattr(args, flag)
+        if value is not None:
+            if flag in ("dem", "imagery"):
+                value = Path(value).expanduser().resolve()
+            argv += [f"--{flag.replace('_', '-')}", str(value)]
+    if not args.buildings:
+        argv.append("--no-buildings")
     import subprocess
 
     code = subprocess.call(argv)
@@ -433,7 +444,14 @@ def build_parser() -> argparse.ArgumentParser:
     wc.add_argument("--lon", type=float, required=True, help="centre longitude, e.g. 33.23")
     wc.add_argument("--size", type=float, default=3000, help="edge length in metres (default 3000)")
     wc.add_argument("--name", required=True, help="world name: letters, digits, '_' and '-'")
-    wc.add_argument("--texture", type=int, default=2048, choices=(1024, 2048, 4096))
+    wc.add_argument("--texture", type=int, choices=(1024, 2048, 4096, 8192), help="texture size in pixels")
+    wc.add_argument("--resolution", type=int, choices=(257, 513, 1025, 2049, 4097), help="heightmap samples per edge")
+    wc.add_argument("--no-buildings", dest="buildings", action="store_false", help="leave out OpenStreetMap buildings")
+    wc.add_argument("--dem", metavar="FILE.tif", help="your own elevation GeoTIFF (any CRS) where it covers")
+    wc.add_argument("--imagery", metavar="FILE.tif", help="your own orthophoto GeoTIFF (any CRS) where it covers")
+    wc.add_argument("--imagery-url", metavar="URL", help="XYZ tiles you are allowed to use, {z}/{x}/{y}")
+    wc.add_argument("--imagery-zoom", type=int, help="highest zoom of --imagery-url")
+    wc.add_argument("--imagery-credit", help="attribution for --imagery-url")
     wc.add_argument("--force", action="store_true", help="replace a world with the same name")
     wc.add_argument("-y", "--yes", action="store_true", help="install hangar-earth without asking")
     sub.add_parser("doctor", help="check the installation")

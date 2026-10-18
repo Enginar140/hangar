@@ -109,6 +109,10 @@ EN: dict[str, str] = {
         "point, downloaded from their public sources. Tip: in Google Maps or OpenStreetMap, right-click a "
         "place to copy its coordinates. Vehicles are placed on the ground; their GPS shows the real place."
     ),
+    "HANGAR_EARTH_UPDATE": (
+        "hangar-earth {old} is installed; {new} is available (OpenStreetMap buildings, your own "
+        "DEM and orthophoto).\n\nUpdate it now? License: {license}."
+    ),
     "HANGAR_EARTH_OFFER": (
         "Worlds from real places are built by hangar-earth, which is not installed yet.\n\n"
         "Install it now? It goes into Hangar's own folder, needs no sudo and takes about 200 MB. "
@@ -142,6 +146,10 @@ TR.update({
         "açık kaynaklarından indirilir. İpucu: Google Haritalar'da ya da OpenStreetMap'te bir yere sağ "
         "tıklayıp koordinatını kopyalayabilirsin. Araçlar yere konur; GPS'leri gerçek konumu gösterir."
     ),
+    "HANGAR_EARTH_UPDATE": (
+        "Kurulu hangar-earth {old}; {new} sürümü çıktı (OpenStreetMap binaları, kendi DEM ve "
+        "ortofoton).\n\nŞimdi güncellensin mi? Lisans: {license}."
+    ),
     "HANGAR_EARTH_OFFER": (
         "Gerçek yerlerden dünyaları hangar-earth üretir ve henüz kurulu değil.\n\n"
         "Şimdi kurulsun mu? Hangar'ın kendi klasörüne kurulur, sudo gerekmez, yaklaşık 200 MB yer kaplar. "
@@ -169,6 +177,12 @@ TR.update({
     ),
     "Quality": "Kalite",
     "Create a world from a real place": "Gerçek bir yerden dünya oluştur",
+    "OpenStreetMap buildings": "OpenStreetMap binaları",
+    "Your own elevation GeoTIFF (optional, sharper terrain)":
+        "Kendi yükseklik GeoTIFF'in (opsiyonel, daha keskin arazi)",
+    "Your own orthophoto GeoTIFF (optional, sharper ground)":
+        "Kendi ortofoto GeoTIFF'in (opsiyonel, daha keskin zemin)",
+    "A GeoTIFF file you gave does not exist.": "Verdiğin GeoTIFF dosyası bulunamadı.",
     "Latitude": "Enlem",
     "Longitude": "Boylam",
     "Size": "Boyut",

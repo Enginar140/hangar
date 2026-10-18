@@ -49,6 +49,16 @@ class Source:
     def fetched(self) -> bool:
         return (self.path / ".git").exists() or (self.path / ".hangar-fetched").exists()
 
+    @property
+    def installed_ref(self) -> str | None:
+        """The version Hangar installed (download, archive and python kinds)."""
+        marker = self.path / ".hangar-fetched"
+        return marker.read_text(encoding="utf-8").strip() if marker.exists() else None
+
+    @property
+    def outdated(self) -> bool:
+        return self.installed_ref is not None and self.installed_ref != self.ref
+
 
 def _say(line: str) -> None:
     print(line, flush=True)  # keep the order with the output of the tools run next
