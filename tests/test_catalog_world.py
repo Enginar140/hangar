@@ -227,3 +227,34 @@ def test_world_without_location_gets_the_home(settings, tmp_path):
     out = build_world(cat.worlds["runway"].path, [], tmp_path / "run", set(), (), Home(lat=40.5, lon=30.5, alt=100))
     sc = ET.parse(out).getroot().find("world/spherical_coordinates")
     assert float(sc.findtext("latitude_deg")) == 40.5 and sc.findtext("surface_model") == "EARTH_WGS84"
+
+
+def test_command_topics_are_scoped_per_vehicle(settings, tmp_path):
+    sdf = settings.resolved_model_paths()[0] / "testplane" / "model.sdf"
+    sdf.write_text(sdf.read_text().replace("</fdm_port_in>", """</fdm_port_in>
+      <control channel="0"><type>COMMAND</type><cmd_topic>/left_aileron_joint/cmd_pos</cmd_topic></control>
+      <control channel="1"><type>COMMAND</type><cmd_topic>coxa_joint/cmd_pos</cmd_topic></control>
+      <control channel="2"><type>COMMAND</type><cmd_topic>/model/testplane/joint/motor/cmd_vel</cmd_topic></control>
+    </plugin>
+    <plugin name="gz::sim::systems::JointPositionController" filename="gz-sim-joint-position-controller-system">
+      <topic>/left_aileron_joint/cmd_pos</topic>
+    </plugin>
+    <plugin name="gz::sim::systems::JointPositionController" filename="gz-sim-joint-position-controller-system">
+      <topic>coxa_joint/cmd_pos</topic>
+    </plugin>
+    <plugin name="gz::sim::systems::LiftDrag" filename="gz-sim-lift-drag-system">
+      <topic>lift_drag</topic>""", 1))
+    cat = Catalog(settings)
+    sc = Scenario.model_validate({"world": "runway", "vehicles": [{"model": "testplane"}, {"model": "testplane"}]})
+    names = [v.name for v in sc.vehicles]
+    plan = PortPlan.build(sc, gazebo=dict.fromkeys(names, True), cameras=dict.fromkeys(names, False))
+    vehicles = [WorldVehicle(cat.get("testplane"), p, s.pose_sdf) for s, p in zip(sc.vehicles, plan.vehicles)]
+    build_world(cat.worlds["runway"].path, vehicles, tmp_path / "run", {"testplane"})
+
+    for name in ("testplane", "testplane_2"):
+        model = ET.parse(tmp_path / "run" / "models" / name / "model.sdf").getroot()
+        cmds = [c.text for c in model.iter("cmd_topic")]
+        assert cmds == [f"/model/{name}/left_aileron_joint/cmd_pos", f"/model/{name}/coxa_joint/cmd_pos",
+                        f"/model/{name}/joint/motor/cmd_vel"]
+        # the listening end moves with it; unrelated topics stay
+        assert [t.text for t in model.iter("topic")] == cmds[:2] + ["lift_drag"]

@@ -189,6 +189,7 @@ def _make_instance_model(v: WorldVehicle, models_dir: Path, model_paths: Sequenc
     model = tree.getroot().find("model")
     if model is None:
         raise ValueError(f"{src / 'model.sdf'} has no <model> element")
+    src_name = model.get("name", "")
     model.set("name", v.instance_name)
 
     found_fdm = False
@@ -205,6 +206,7 @@ def _make_instance_model(v: WorldVehicle, models_dir: Path, model_paths: Sequenc
         _tune_own_camera(tree.getroot(), v.camera)
     if not found_fdm:
         raise ValueError(f"{v.model.name}: no ArduPilotPlugin in model.sdf")
+    _scope_command_topics(tree.getroot(), src_name, v.instance_name)
     if v.adds_camera:
         parent = v.model.camera_parent or _body_link(model, [src.parent, *model_paths])
         pose = (v.camera.pose if v.camera and v.camera.pose else None) or v.model.camera_pose or DEFAULT_CAMERA_POSE
@@ -219,6 +221,34 @@ def _make_instance_model(v: WorldVehicle, models_dir: Path, model_paths: Sequenc
             name_el.text = v.instance_name
         cfg.write(dst / "model.config", encoding="utf-8", xml_declaration=True)
     return dst
+
+
+def _scope_command_topics(root: ET.Element, old_name: str, name: str) -> None:
+    """ArduPilotPlugin's <cmd_topic>s and the <topic>s of the plugins listening to them are global
+    in many models (/left_aileron_joint/cmd_pos): with two copies of the model, each would move
+    the other's control surfaces. Both ends move under /model/<instance name>/."""
+    plugins = list(root.iter("plugin"))
+    renamed: dict[str, str] = {}
+    for plugin in plugins:
+        for cmd in plugin.iter("cmd_topic"):
+            topic = (cmd.text or "").strip()
+            if topic:
+                renamed[topic.lstrip("/")] = _scoped_topic(topic, old_name, name)
+    if not renamed:
+        return
+    for plugin in plugins:
+        for el in plugin.iter():
+            if el.tag in ("cmd_topic", "topic") and el.text and el.text.strip().lstrip("/") in renamed:
+                el.text = renamed[el.text.strip().lstrip("/")]
+
+
+def _scoped_topic(topic: str, old_name: str, name: str) -> str:
+    bare = topic.strip().lstrip("/")
+    if bare.startswith(f"model/{name}/"):
+        return "/" + bare
+    if old_name and bare.startswith(f"model/{old_name}/"):  # gz-sim's default topics name the model
+        return f"/model/{name}/" + bare[len(f"model/{old_name}/"):]
+    return f"/model/{name}/{bare}"
 
 
 def _set_child(parent: ET.Element, tag: str, text: str) -> None:

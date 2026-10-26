@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.5 (2026-10-26)
+
+- **Several copies of one model no longer move each other's control surfaces.** Models such as
+  `mini_talon_vtail` drive their surfaces on global topics (`/left_aileron_joint/cmd_pos`), so
+  with two or more copies every surface followed every autopilot: "Accels inconsistent" on the
+  ground and a floating point exception in flight. Each vehicle's ArduPilotPlugin command topics
+  and the plugins listening to them now live under `/model/<vehicle name>/`; topics naming the
+  original model (`/model/mini_talon_vtail/...`) follow the new name.
+
 ## 0.3.4 (2026-10-18)
 
 - **A SITL already running elsewhere no longer blocks the start**: when the ports of instance 0
