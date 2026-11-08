@@ -82,7 +82,22 @@ hangar models / hangar worlds  # başlatılabilecek araçlar ve dünyalar
 hangar doctor                  # neyin kurulu olduğunu, neyin eksik olduğunu ve çözümünü gösterir
 hangar logs                    # son çalıştırmanın logu (-f canlı izle, -w sadece uyarılar, --list çalıştırmalar)
 hangar status                  # şu an süren çalıştırmalar, hangi programdan olursa olsun (betikler için --json)
+hangar replay                  # son çalıştırmanın kayıtlı izleri, tekrar oynatma dosyası olarak (Hangar Cloud oynatır)
 ```
+
+### Kayıtlı izler ve tekrar oynatma
+
+Her çalıştırma araçlarının ne yaptığını kaydeder: çalıştırma klasöründe `track/<araç>.csv`
+(konum, eve göre yükseklik, roll, pitch, yaw, hız, mod ve arm durumu, saniyede beş kez) ve
+`events.jsonl` (araçların mesajları, mod değişiklikleri, arm/disarm, SITL'in kapanması ve yeniden
+başlatılması). Zamanlar çalıştırmanın başından beri geçen saniyedir (duvar saati), tüm araçlar
+için ortaktır.
+
+`hangar replay [ÇALIŞTIRMA] [-o DOSYA]` bunları bir tekrar oynatma dosyası olarak yazar
+(varsayılan `<çalıştırma>/replay.json.gz`): JSON, sürüm 1, her aracın izi evin metre cinsinden
+kuzeyinde ve doğusunda. [Hangar Cloud](https://github.com/Enginar140/hangar-cloud) bunları 3D'de
+ve haritada oynatır, Hangar'ın kayıtlı çalıştırmalarını kendiliğinden listeler. Başka programlar da
+aynı biçimi yazabilir; ayrıntılar onun README'sinde.
 
 ### Aynı anda tek simülasyon
 

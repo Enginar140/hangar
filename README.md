@@ -87,7 +87,20 @@ hangar models / hangar worlds  # what can be launched
 hangar doctor                  # what is installed, what is missing, how to fix it
 hangar logs                    # log of the latest run   (-f follow, -w warnings only, --list runs)
 hangar status                  # runs going on now, from any program (--json for scripts)
+hangar replay                  # the latest run's recorded tracks as a replay file (Hangar Cloud plays it)
 ```
+
+### Recorded tracks and replays
+
+Every run records what its vehicles did: `track/<vehicle>.csv` in the run folder (position,
+height above home, roll, pitch, yaw, speed, mode and arming, five times a second) and
+`events.jsonl` (the vehicles' messages, mode changes, arming, SITL exits and restarts). Times are
+seconds since the run started, on the wall clock, so all vehicles share them.
+
+`hangar replay [RUN] [-o FILE]` writes them as a replay file (`<run>/replay.json.gz` by default):
+JSON, version 1, with each vehicle's track in metres north and east of home. [Hangar
+Cloud](https://github.com/Enginar140/hangar-cloud) plays these back in 3D and on a map, and lists
+Hangar's recorded runs by itself. Other programs can write the same format; see its README.
 
 ### One simulation at a time
 

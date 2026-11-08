@@ -157,9 +157,41 @@ def cmd_status(args, settings: Settings) -> int:
     return 0
 
 
+def _runs() -> list[Path]:
+    """Run folders, newest first."""
+    d = paths.runs_dir()
+    return sorted((p for p in d.glob("*") if p.is_dir() and not p.is_symlink()),
+                  key=lambda p: p.name, reverse=True) if d.is_dir() else []
+
+
+def _find_run(runs: list[Path], name: str | None) -> Path | None:
+    if name in (None, "latest"):
+        return runs[0] if runs else None
+    return next((r for r in runs if r.name.startswith(name) or name in r.name), None)
+
+
+def cmd_replay(args, settings: Settings) -> int:
+    from . import track
+
+    runs = [r for r in _runs() if track.has_track(r)]
+    run = _find_run(runs, args.run)
+    if run is None:
+        err.print("no recorded run by that name (runs record their tracks since Hangar 0.3.8)")
+        return 1
+    out = Path(args.output) if args.output else run / "replay.json.gz"
+    try:
+        data = track.build(run)
+    except ValueError as e:
+        err.print(f"[red]{escape(str(e))}[/]")
+        return 1
+    track.write(data, out)
+    n = sum(len(t["t"]) for t in data["tracks"].values())
+    console.print(f"{out}  ({len(data['tracks'])} vehicles, {n} points, {len(data['events'])} events)")
+    return 0
+
+
 def cmd_logs(args, settings: Settings) -> int:
-    runs = sorted((p for p in paths.runs_dir().glob("*") if p.is_dir() and not p.is_symlink()),
-                  key=lambda p: p.name, reverse=True) if paths.runs_dir().is_dir() else []
+    runs = _runs()
     if args.list:
         if not runs:
             console.print("no runs yet")
@@ -170,10 +202,7 @@ def cmd_logs(args, settings: Settings) -> int:
             table.add_row(r.name, ", ".join(logs) or "—", str(r))
         console.print(table)
         return 0
-    if args.run in (None, "latest"):
-        run = runs[0] if runs else None
-    else:
-        run = next((r for r in runs if r.name.startswith(args.run) or args.run in r.name), None)
+    run = _find_run(runs, args.run)
     if run is None:
         err.print("no such run; `hangar logs --list` shows them")
         return 1
@@ -458,6 +487,10 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("--owner", metavar="TAG", help="who started it, shown by `hangar status` (default: cli)")
     up.add_argument("--allow-parallel", action="store_true", help="start even when another Hangar run is going on")
 
+    replay = sub.add_parser("replay", help="write a run's recorded tracks as a replay file (for Hangar Cloud)")
+    replay.add_argument("run", nargs="?", help="run name or part of it (default: latest)")
+    replay.add_argument("-o", "--output", metavar="FILE", help="default: <run>/replay.json.gz (.json: not compressed)")
+
     status = sub.add_parser("status", help="list the Hangar runs going on now (from any program)")
     status.add_argument("--json", action="store_true", help="as JSON, for scripts")
 
@@ -516,7 +549,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 COMMANDS = {
-    "tui": cmd_tui, "up": cmd_up, "status": cmd_status, "ports": cmd_ports, "init": cmd_init, "models": cmd_models,
+    "tui": cmd_tui, "up": cmd_up, "status": cmd_status, "replay": cmd_replay, "ports": cmd_ports,
+    "init": cmd_init, "models": cmd_models,
     "worlds": cmd_worlds, "world": cmd_world, "doctor": cmd_doctor, "logs": cmd_logs, "config": cmd_config,
     "sources": cmd_sources,
 }

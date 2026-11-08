@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import __version__, camera, paths, perf, registry
+from .track import TrackRecorder
 from .catalog import Catalog, VehicleModel
 from .mavlink import VehicleLink
 from .ports import SERIAL0_BASE, STRIDE, Endpoint, PortPlan, VehiclePorts, port_in_use
@@ -33,6 +34,8 @@ from .world import WorldVehicle, build_world
 GAZEBO_READY_TIMEOUT = 120.0
 LINK_TIMEOUT = 60.0
 LOG_LINES = 3000
+TRACK_EVERY = 0.2  # seconds between recorded positions
+_LINK_CHATTER = ("waiting for SITL", "connected to tcp", "connection to SITL lost", "output ", "monitor ")
 
 
 class SimState(enum.Enum):
@@ -132,6 +135,7 @@ class Supervisor:
         self.mavproxy: ManagedProcess | None = None
         self._map_output: Endpoint | None = None
         self._registration: registry.Registration | None = None
+        self._track: TrackRecorder | None = None
         atexit.register(self._kill_all)
 
     # --- logging / state -------------------------------------------------
@@ -139,6 +143,8 @@ class Supervisor:
     def log(self, source: str, text: str, level: str = "info") -> None:
         line = LogLine(time.time(), source, level, text)
         self.logs.append(line)
+        if self._track and any(v.name == source for v in self.vehicles) and not text.startswith(_LINK_CHATTER):
+            self._track.event("text", source, text, level=level)
         if self._logfile:
             self._logfile.write(format_plain(line) + "\n")
         if self.on_log:
@@ -284,6 +290,18 @@ class Supervisor:
                   if v.link and v.link.telemetry.sim_speed is not None]
         return min(speeds) if speeds else None
 
+    async def _record(self) -> None:
+        """Every vehicle's position, a few times a second, for replays (see track.py)."""
+        try:
+            while self.state == SimState.RUNNING and self._track:
+                for v in self.vehicles:
+                    if v.link:
+                        self._track.sample(v.name, v.link.telemetry)
+                await asyncio.sleep(TRACK_EVERY)
+        finally:
+            if self._track:
+                self._track.flush()
+
     async def _watch_speed(self) -> None:
         """Say once, with the likely causes, when the simulation crawls."""
         slow = 0
@@ -380,9 +398,10 @@ class Supervisor:
         if self._registration:
             self._registration.update(state="running", running_since=self.started_at)
         self.log("hangar", f"{len(self.vehicles)} vehicle(s) running", "event")
-        watcher = asyncio.create_task(self._watch_speed())
-        self._background.add(watcher)
-        watcher.add_done_callback(self._background.discard)
+        for job in (self._watch_speed(), self._record()):
+            task = asyncio.create_task(job)
+            self._background.add(task)
+            task.add_done_callback(self._background.discard)
 
         if self.uses_gazebo:  # cameras only need Gazebo, not the autopilots
             for v in self.vehicles:
@@ -519,6 +538,8 @@ class Supervisor:
     def _vehicle_exited(self, v: VehicleRuntime, p: ManagedProcess) -> None:
         if p.state == ProcState.EXITED:
             self.log(v.name, f"SITL exited unexpectedly (code {p.returncode}), see {p.log_path}", "error")
+            if self._track:
+                self._track.event("exit", v.name, f"code {p.returncode}")
 
     def _camera_destinations(self, v: VehicleRuntime) -> list[tuple[str, int]]:
         assert v.ports.camera
@@ -768,6 +789,8 @@ class Supervisor:
             raise SupervisorError("simulation is not running")
         v = self.vehicle(name)
         self.log(v.name, "restarting SITL", "event")
+        if self._track:
+            self._track.event("restart", v.name)
         if v.link:
             await v.link.stop()
         if v.process:
@@ -830,7 +853,10 @@ class Supervisor:
         assert self.run_dir
         sc = self.effective_scenario()
         self._registration = registry.Registration(self.run_dir)
+        home = self.home()
+        self._track = TrackRecorder(self.run_dir, time.time())
         self._registration.write({
+            "home": {"lat": home.lat, "lon": home.lon, "alt": home.alt},
             "state": "starting", "started": time.time(), "owner": self.owner, "scenario": sc.name,
             "hangar": __version__, "world": sc.world if self.uses_gazebo else None,
             "config": str(paths.config_file()),  # its models and worlds, for programs that attach
@@ -846,6 +872,9 @@ class Supervisor:
         })
 
     def _unregister(self, state: str) -> None:
+        if self._track:
+            self._track.close()
+            self._track = None
         if self._registration:
             self._registration.close(state)
             self._registration = None

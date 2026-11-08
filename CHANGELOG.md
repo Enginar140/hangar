@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.8 (2026-11-08)
+
+- **Recorded tracks**: every run keeps `track/<vehicle>.csv` (position, height, attitude, speed,
+  mode, arming; 5 per second) and `events.jsonl` (messages, mode changes, arming, SITL exits).
+- **`hangar replay [RUN] [-o FILE]`** writes a run as a replay file (JSON version 1, tracks in
+  metres north/east of home) that Hangar Cloud plays back.
+- Telemetry has roll, pitch and yaw (from ATTITUDE); `state.json` and `hangar status --json` give
+  the run's `home`.
+
 ## 0.3.7 (2026-11-08)
 
 - **Monitor ports**: every vehicle gets a read-only MAVLink port, `tcp:5765` + 10 per instance.

@@ -10,6 +10,7 @@ feeds the TUI with telemetry and carries its commands.
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from collections import deque
 from collections.abc import Callable
@@ -70,6 +71,9 @@ class Telemetry:
     lon: float | None = None
     alt_rel: float | None = None
     heading: float | None = None
+    roll: float | None = None  # degrees, from ATTITUDE
+    pitch: float | None = None
+    yaw: float | None = None
     groundspeed: float | None = None
     airspeed: float | None = None
     climb: float | None = None
@@ -399,6 +403,8 @@ class VehicleLink:
             t.alt_rel = m.relative_alt / 1000.0
             if m.hdg != 65535:
                 t.heading = m.hdg / 100.0
+        elif kind == "ATTITUDE":
+            t.roll, t.pitch, t.yaw = (round(math.degrees(x), 2) for x in (m.roll, m.pitch, m.yaw))
         elif kind == "VFR_HUD":
             t.airspeed, t.groundspeed, t.climb, t.throttle = m.airspeed, m.groundspeed, m.climb, m.throttle
         elif kind == "SYS_STATUS":
