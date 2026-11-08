@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.7 (2026-11-08)
+
+- **Monitor ports**: every vehicle gets a read-only MAVLink port, `tcp:5765` + 10 per instance.
+  Clients see all of the vehicle's traffic; what they send is dropped. `monitor: false` turns
+  them off, `monitor: 0.0.0.0` opens them to the network. Listed by `hangar ports` and in
+  `hangar status --json` (`vehicles[].monitor`), which also gives the run's `config` file.
+- A TCP output client that stops reading is dropped instead of being buffered without limit.
+- While another run blocks the start, the preflight check says only that, not also the ports
+  that run holds.
+
 ## 0.3.6 (2026-11-08)
 
 - **One simulation at a time**: Hangar refuses to start while another Hangar run is going on

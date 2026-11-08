@@ -221,3 +221,31 @@ async def test_video_relay_copies_to_every_destination():
         relay.close()
         for r in receivers:
             r.close()
+
+
+async def test_monitor_port_is_read_only():
+    sitl = FakeSitl(sysid=4)
+    port, mon = free_port(), free_port()
+    server = await asyncio.start_server(sitl.handle, "127.0.0.1", port)
+    link = VehicleLink("v", 4, port, [], monitor=Endpoint("tcpin", "127.0.0.1", mon))
+    await link.start()
+    try:
+        assert await link.wait_connected(5)
+        reader, writer = await asyncio.open_connection("127.0.0.1", mon)
+        watcher = mav.MAVLink(None, srcSystem=201, srcComponent=1)
+        writer.write(watcher.command_long_encode(4, 1, mav.MAV_CMD_COMPONENT_ARM_DISARM, 0, 1, 0, 0, 0, 0, 0, 0)
+                     .pack(watcher))
+        await writer.drain()
+        dec = mav.MAVLink(None)
+        dec.robust_parsing = True
+        seen = []
+        for _ in range(20):
+            seen += [m.get_type() for m in dec.parse_buffer(await asyncio.wait_for(reader.read(4096), 2)) or []]
+            if "GLOBAL_POSITION_INT" in seen:
+                break
+        assert {"HEARTBEAT", "GLOBAL_POSITION_INT"} <= set(seen), "the monitor gets the vehicle's traffic"
+        assert not any(m.get_srcSystem() == 201 for m in sitl.received), "the monitor must not reach the vehicle"
+        writer.close()
+    finally:
+        await link.stop()
+        server.close()

@@ -139,7 +139,24 @@ class Scenario(BaseModel):
     first_instance: int = Field(default=0, ge=0, le=100)
     home: Home = Field(default_factory=Home)
     outputs: list[str] = Field(default_factory=lambda: ["udp:127.0.0.1:14550"])
+    # a read-only MAVLink port per vehicle (tcp 5765 + 10 per instance) for programs that only
+    # watch; what they send is dropped. true: on this computer only; an address such as
+    # "0.0.0.0": reachable from that network; false: none.
+    monitor: bool | str = True
     vehicles: list[VehicleSpec] = Field(default_factory=list)
+
+    @field_validator("monitor")
+    @classmethod
+    def _monitor_host(cls, v):
+        if isinstance(v, str) and (not v.strip() or ":" in v or " " in v.strip()):
+            raise ValueError("monitor: true, false or an address to listen on, such as 0.0.0.0")
+        return v.strip() if isinstance(v, str) else v
+
+    @property
+    def monitor_host(self) -> str | None:
+        if self.monitor is False:
+            return None
+        return "127.0.0.1" if self.monitor is True else self.monitor
 
     @model_validator(mode="after")
     def _names(self) -> Scenario:

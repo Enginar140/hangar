@@ -163,6 +163,21 @@ vehicles:
 araçlardan uzakta bir sıraya dizilirler. Böylece iki araç asla aynı noktada
 başlamaz.
 
+### Bir çalıştırmayı izlemek (monitor portları)
+
+Her araç ayrıca **salt okunur** bir MAVLink portu alır: 0. instance için `tcp:5765`, her
+instance'ta 10 fazlası (`5775`, `5785`, …). Her program buna bağlanıp aracın tüm trafiğini
+görebilir; gönderdiği her şey atılır, böylece izleyen bir program araca yanlışlıkla komut
+gönderemez. [Hangar Cloud](https://github.com/Enginar140/hangar-cloud) başka bir programın
+başlattığı çalıştırmayı bunlarla gösterir. `hangar ports` ve `hangar status --json` bunları
+listeler.
+
+```yaml
+monitor: true          # varsayılan: yalnızca bu bilgisayardan
+monitor: 0.0.0.0       # ağdan da erişilebilir
+monitor: false         # yok
+```
+
 ### Kameralar
 
 Modelinde kamera olmasa bile her Gazebo aracına kamera takılabilir. `camera: true`

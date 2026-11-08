@@ -80,3 +80,19 @@ def test_conflict_with_running_program():
         sc.vehicles[0].outputs = [f"tcpin:0.0.0.0:{busy}"]
         plan = PortPlan.build(sc, {}, {})
         assert any(str(busy) in p for p in plan.conflicts())
+
+
+def test_monitor_ports_follow_the_instance():
+    sc = Scenario.model_validate({"first_instance": 2, "vehicles": [{"model": "sitl:copter"}, {"model": "sitl:plane"}]})
+    plan = PortPlan.build(sc, gazebo={}, cameras={})
+    assert [str(v.monitor) for v in plan.vehicles] == ["tcpin:127.0.0.1:5785", "tcpin:127.0.0.1:5795"]
+    assert ("tcp", 5785) in {(b.proto, b.port) for b in plan.bindings()}
+    assert plan.rows()[0]["monitor"] == "tcp:5785"
+
+    lan = Scenario.model_validate({"monitor": "0.0.0.0", "vehicles": [{"model": "sitl:copter"}]})
+    assert PortPlan.build(lan, gazebo={}, cameras={}).vehicles[0].monitor.host == "0.0.0.0"
+    off = Scenario.model_validate({"monitor": False, "vehicles": [{"model": "sitl:copter"}]})
+    assert PortPlan.build(off, gazebo={}, cameras={}).vehicles[0].monitor is None
+    assert "monitor" not in Scenario.model_validate({"vehicles": [{"model": "sitl:copter"}]}).dump()
+    with pytest.raises(ValueError):
+        Scenario.model_validate({"monitor": "0.0.0.0:99", "vehicles": []})

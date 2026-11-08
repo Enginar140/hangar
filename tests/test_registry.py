@@ -48,6 +48,7 @@ def test_another_run_blocks_the_start_unless_allowed(settings):
         sc = Scenario.model_validate(SCENARIO)
         pf = Supervisor(sc, settings, Catalog(settings)).preflight()
         assert any("another Hangar run is going on: 'duel'" in e and "savasan:t7" in e for e in pf.errors)
+        assert not any("port" in e for e in pf.errors)  # not also the ports that run holds
         pf = Supervisor(sc, settings, Catalog(settings), allow_parallel=True).preflight()
         assert not any("another Hangar run" in e for e in pf.errors)
         assert any("another Hangar run" in w for w in pf.warnings)

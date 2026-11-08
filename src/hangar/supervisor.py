@@ -205,6 +205,8 @@ class Supervisor:
                     warnings.append(text + "; both share this computer, so both run slower")
                 else:
                     errors.append(text + "; stop it first (or start with --allow-parallel)")
+            if others and not self.allow_parallel:
+                check_ports = False  # its ports are busy, of course: that error says it all
         if check_ports and self.scenario.vehicles:
             n = self.pick_instance()
             if self._auto_instance:
@@ -510,7 +512,7 @@ class Supervisor:
         await v.process.start()
         v.link = VehicleLink(
             v.name, v.ports.sysid, v.ports.serial0, self._link_outputs(v.ports.outputs),
-            on_text=lambda name, level, text: self.log(name, text, level),
+            on_text=lambda name, level, text: self.log(name, text, level), monitor=v.ports.monitor,
         )
         await v.link.start()
 
@@ -831,11 +833,14 @@ class Supervisor:
         self._registration.write({
             "state": "starting", "started": time.time(), "owner": self.owner, "scenario": sc.name,
             "hangar": __version__, "world": sc.world if self.uses_gazebo else None,
+            "config": str(paths.config_file()),  # its models and worlds, for programs that attach
             "first_instance": plan.vehicles[0].instance if plan.vehicles else sc.first_instance,
             "vehicles": [{
                 "name": v.name, "model": spec.model, "type": m.type if (m := self.catalog.get(spec.model)) else None,
                 "sysid": v.sysid, "instance": v.instance, "mavlink": f"tcp:127.0.0.1:{v.serial0}",
                 "serial1": v.serial1, "serial2": v.serial2, "fdm": v.fdm,
+                "monitor": f"tcp:{'127.0.0.1' if v.monitor.host == '0.0.0.0' else v.monitor.host}:{v.monitor.port}"
+                if v.monitor else None,
                 "outputs": [str(o) for o in v.outputs],
             } for v, spec in zip(plan.vehicles, sc.vehicles)],
         })

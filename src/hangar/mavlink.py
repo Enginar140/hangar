@@ -174,6 +174,7 @@ class _UdpInput(_Output):
 
 class _TcpInput(_Output):
     server: asyncio.Server | None = None
+    MAX_BACKLOG = 4 << 20  # a client that stopped reading is dropped, not buffered for forever
 
     async def open(self) -> None:
         self.clients: set[asyncio.StreamWriter] = set()
@@ -192,8 +193,9 @@ class _TcpInput(_Output):
 
     def send(self, data: bytes) -> None:
         for w in list(self.clients):
-            if w.is_closing():
+            if w.is_closing() or w.transport.get_write_buffer_size() > self.MAX_BACKLOG:
                 self.clients.discard(w)
+                w.close()
             else:
                 w.write(data)
 
@@ -205,6 +207,10 @@ class _TcpInput(_Output):
 
 
 _OUTPUTS = {"udp": _UdpOutput, "udpin": _UdpInput, "tcpin": _TcpInput}
+
+
+def _drop(data: bytes) -> None:
+    """Where a read-only output's incoming bytes go."""
 
 
 # --- link ----------------------------------------------------------------
@@ -219,12 +225,15 @@ class VehicleLink:
         outputs: list[Endpoint],
         on_text: TextCallback | None = None,
         host: str = "127.0.0.1",
+        monitor: Endpoint | None = None,
     ):
         self.name = name
         self.sysid = sysid
         self.host = host
         self.port = port
         self.endpoints = outputs
+        self.monitor = monitor  # read-only: everything from the vehicle, nothing back to it
+        self._monitor: _Output | None = None
         self.on_text = on_text
         self.telemetry = Telemetry()
         self._mav = mav.MAVLink(None, srcSystem=HANGAR_SYSID, srcComponent=HANGAR_COMPID)
@@ -251,6 +260,13 @@ class VehicleLink:
     async def start(self) -> None:
         for ep in self.endpoints:
             await self._open_output(ep)
+        if self.monitor:
+            out = _TcpInput(self.monitor, _drop)
+            try:
+                await out.open()
+                self._monitor = out
+            except OSError as e:
+                self._text("error", f"monitor {self.monitor}: {e}")
         self._task = asyncio.create_task(self._run(), name=f"link-{self.name}")
 
     async def _open_output(self, ep: Endpoint) -> bool:
@@ -286,6 +302,9 @@ class VehicleLink:
         for out in self._outputs:
             out.close()
         self._outputs.clear()
+        if self._monitor:
+            self._monitor.close()
+            self._monitor = None
         self.telemetry.connected = False
 
     async def wait_connected(self, timeout: float) -> bool:
@@ -342,6 +361,8 @@ class VehicleLink:
     def _from_vehicle(self, data: bytes) -> None:
         for out in self._outputs:
             out.send(data)
+        if self._monitor:
+            self._monitor.send(data)
         try:
             msgs = self._mav.parse_buffer(data) or []
         except Exception:  # malformed frame; the bytes were still routed

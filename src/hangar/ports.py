@@ -22,6 +22,7 @@ STRIDE = 10
 SERIAL0_BASE = 5760  # MAVLink TCP, Hangar's router connects here
 SERIAL1_BASE = 5762
 SERIAL2_BASE = 5763
+MONITOR_BASE = 5765  # Hangar's read-only MAVLink port (free in SITL's block of ten)
 FDM_BASE = 9002  # SITL <-> Gazebo JSON physics
 CAMERA_BASE = 5600  # where this computer's readers get a camera (viewer, Python, v4l2)
 CAMERA_RELAY_BASE = 5700  # where the camera plugin sends when Hangar relays the stream
@@ -111,6 +112,7 @@ class VehiclePorts:
     camera_send: Endpoint | None = None  # where the camera plugin itself sends
     camera_targets: list[Endpoint] = field(default_factory=list)  # other machines / ports
     instance: int = -1  # the SITL's -I; its ports follow from it. Defaults to index.
+    monitor: Endpoint | None = None  # read-only MAVLink (tcpin), see Scenario.monitor
 
     def __post_init__(self) -> None:
         if self.instance < 0:
@@ -163,6 +165,8 @@ class PortPlan:
                 camera=None,
                 outputs=endpoints,
                 instance=n,
+                monitor=Endpoint("tcpin", scenario.monitor_host, MONITOR_BASE + STRIDE * n)
+                if scenario.monitor_host else None,
             )
             if cameras.get(name):
                 cam = v.camera
@@ -188,6 +192,8 @@ class PortPlan:
             ]
             if v.fdm:
                 b.append(Binding("udp", v.fdm, f"{v.name} Gazebo"))
+            if v.monitor:
+                b.append(Binding("tcp", v.monitor.port, f"{v.name} monitor"))
             if v.camera_mode == "relay":
                 b.append(Binding("udp", v.camera_send.port, f"{v.name} camera relay"))
                 b.append(Binding("udp", v.camera, f"{v.name} camera"))
@@ -225,6 +231,7 @@ class PortPlan:
                 "mavlink": f"tcp:{v.serial0}",
                 "scripts": f"tcp:{v.serial1}, tcp:{v.serial2}",
                 "fdm": f"udp:{v.fdm}" if v.fdm else "-",
+                "monitor": f"tcp:{v.monitor.port}" if v.monitor else "-",
                 "camera": _camera_text(v),
                 "outputs": ", ".join(str(e) for e in v.outputs) or "-",
             }

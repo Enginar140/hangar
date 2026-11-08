@@ -166,6 +166,20 @@ A vehicle without a `pose` is placed automatically: such vehicles are lined
 up 15 m apart, clear of the ones that have a pose, so two vehicles never start
 on the same spot.
 
+### Watching a run (monitor ports)
+
+Every vehicle also gets a **read-only** MAVLink port: `tcp:5765` for instance 0, and 10 more per
+instance (`5775`, `5785`, …). Anything can connect to it and see all of the vehicle's traffic;
+whatever it sends is dropped, so a viewer can never command the vehicle by mistake.
+[Hangar Cloud](https://github.com/Enginar140/hangar-cloud) uses these to show a run another
+program started. `hangar ports` and `hangar status --json` list them.
+
+```yaml
+monitor: true          # default: on this computer only
+monitor: 0.0.0.0       # also reachable from the network
+monitor: false         # none
+```
+
 ### Cameras
 
 Any Gazebo vehicle can have a camera, even if its model ships without one.

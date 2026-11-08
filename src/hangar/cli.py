@@ -265,9 +265,11 @@ def cmd_ports(args, settings: Settings) -> int:
     scenario = _load_scenario(args.scenario) if args.scenario else _example(args.example or "quick")
     pf = Supervisor(scenario, settings, Catalog(settings)).preflight()
     if pf.plan:
-        table = Table("#", "Name", "SysID", "MAVLink", "Gazebo FDM", "Camera", "Outputs", header_style="bold")
+        table = Table("#", "Name", "SysID", "MAVLink", "Monitor", "Gazebo FDM", "Camera", "Outputs",
+                      header_style="bold")
         for r in pf.plan.rows():
-            table.add_row(r["index"], r["name"], r["sysid"], r["mavlink"], r["fdm"], r["camera"], r["outputs"])
+            table.add_row(r["index"], r["name"], r["sysid"], r["mavlink"], r["monitor"], r["fdm"], r["camera"],
+                          r["outputs"])
         console.print(table)
     for w in pf.warnings:
         console.print(f"[yellow]! {escape(w)}[/]")
