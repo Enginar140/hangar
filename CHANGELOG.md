@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.6 (2026-11-08)
+
+- **One simulation at a time**: Hangar refuses to start while another Hangar run is going on
+  (from any program), and names it. `--allow-parallel` on `hangar up` and `hangar tui` starts
+  anyway.
+- **`hangar status`** (`--json` for scripts) lists the runs going on now: process, state,
+  scenario, owner and every vehicle's MAVLink port. Each run registers itself in
+  `~/.local/state/hangar/active/` while it runs; entries of processes that are gone are dropped.
+- **`hangar up --owner TAG`** names who started a run.
+- Every run keeps `state.json` in its folder (the same details, plus how it ended).
+
 ## 0.3.5 (2026-10-26)
 
 - **Several copies of one model no longer move each other's control surfaces.** Models such as

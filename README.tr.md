@@ -81,7 +81,22 @@ hangar ports quickstart.yaml   # port planını ve ön kontrolleri gösterir
 hangar models / hangar worlds  # başlatılabilecek araçlar ve dünyalar
 hangar doctor                  # neyin kurulu olduğunu, neyin eksik olduğunu ve çözümünü gösterir
 hangar logs                    # son çalıştırmanın logu (-f canlı izle, -w sadece uyarılar, --list çalıştırmalar)
+hangar status                  # şu an süren çalıştırmalar, hangi programdan olursa olsun (betikler için --json)
 ```
+
+### Aynı anda tek simülasyon
+
+Aynı bilgisayardaki iki simülasyon işlemciyi ve ekran kartını paylaşır, ikisi de tek başına
+olduğundan yavaş çalışır. Bu yüzden başka bir Hangar çalıştırması sürerken (terminal arayüzü,
+`hangar up`, Hangar Cloud ya da bir betik) Hangar başlamayı reddeder ve hangisi olduğunu
+söyler. `--allow-parallel` (`hangar up` ve `hangar tui` için) yine de başlatır; ikinci
+çalıştırma bir sonraki boş SITL instance'ını kullanır.
+
+`hangar status` şu an süren çalıştırmaları listeler; `hangar status --json` her birinin
+sürecini, durumunu, senaryosunu, sahibini ve her aracın MAVLink portunu verir; bilgisayar
+boşalana kadar bekleyen bir betik için. `hangar up --owner ETİKET` çalıştırmayı kimin başlattığını
+yazar (varsayılan `cli`; arayüz `tui` kullanır). Aynı bilgiler çalıştırma klasöründe
+`state.json` olarak da durur ve çalıştırma bitince de kalır.
 
 ### Araçlar geç hazır oluyorsa
 

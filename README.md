@@ -86,7 +86,20 @@ hangar ports quickstart.yaml   # port plan + preflight checks
 hangar models / hangar worlds  # what can be launched
 hangar doctor                  # what is installed, what is missing, how to fix it
 hangar logs                    # log of the latest run   (-f follow, -w warnings only, --list runs)
+hangar status                  # runs going on now, from any program (--json for scripts)
 ```
+
+### One simulation at a time
+
+Two simulations on one computer share its CPU and GPU, and both run slower than they would
+alone. So Hangar refuses to start while another Hangar run is going on (from the terminal UI,
+`hangar up`, Hangar Cloud or a script), and says which one. `--allow-parallel` (on `hangar up`
+and `hangar tui`) starts anyway; the second run then uses the next free SITL instance.
+
+`hangar status` lists the runs going on now; `hangar status --json` gives each run's process,
+state, scenario, owner and every vehicle's MAVLink port, for a script that waits until the
+computer is free. `hangar up --owner TAG` names who started a run (default `cli`; the UI uses
+`tui`). The same details are kept in the run folder as `state.json`, which stays after the run.
 
 ### When vehicles take long to become ready
 

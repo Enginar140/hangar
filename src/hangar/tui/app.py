@@ -111,8 +111,9 @@ class HangarApp(App):
     ]
 
     def __init__(self, scenario: Scenario | None = None, scenario_path: Path | None = None,
-                 settings: Settings | None = None):
+                 settings: Settings | None = None, allow_parallel: bool = False):
         super().__init__()
+        self.allow_parallel = allow_parallel
         self.settings = settings or Settings.load()
         self.catalog = Catalog(self.settings)
         self.scenario_path = scenario_path
@@ -135,7 +136,8 @@ class HangarApp(App):
 
     def _make_supervisor(self) -> Supervisor:
         return Supervisor(self.scenario, self.settings, self.catalog,
-                          on_log=self._pending_logs.append, on_state=self._on_state)
+                          on_log=self._pending_logs.append, on_state=self._on_state,
+                          owner="tui", allow_parallel=self.allow_parallel)
 
     # --- layout ----------------------------------------------------------
 

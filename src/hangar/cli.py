@@ -66,7 +66,7 @@ def cmd_tui(args, settings: Settings) -> int:
         scenario = _load_scenario(args.scenario)
     elif args.example:
         scenario = _example(args.example)
-    HangarApp(scenario=scenario, scenario_path=path, settings=settings).run()
+    HangarApp(scenario=scenario, scenario_path=path, settings=settings, allow_parallel=args.allow_parallel).run()
     return 0
 
 
@@ -86,7 +86,8 @@ def cmd_up(args, settings: Settings) -> int:
                       highlight=False)
 
     async def run() -> int:
-        sup = Supervisor(scenario, settings, Catalog(settings), on_log=on_log)
+        sup = Supervisor(scenario, settings, Catalog(settings), on_log=on_log,
+                         owner=args.owner or "cli", allow_parallel=args.allow_parallel)
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -129,6 +130,31 @@ def _print_status(sup) -> None:
         console.print(f"[dim]{v.name:>16} {v.status:8} {tel.mode:10} "
                       f"{'ARMED' if tel.armed else 'disarmed':9} {alt:>8} {gs:>9} {tel.gps_text}{speed}[/]",
                       highlight=False)
+
+
+def cmd_status(args, settings: Settings) -> int:
+    import json
+    import time
+
+    from .registry import active_runs
+
+    runs = active_runs()
+    if args.json:
+        print(json.dumps(runs, indent=1))
+        return 0
+    if not runs:
+        console.print("no Hangar run is going on")
+        return 0
+    table = Table(box=None, header_style="bold")
+    for col in ("run", "state", "owner", "since", "pid", "vehicles"):
+        table.add_column(col)
+    for r in runs:
+        vehicles = ", ".join(f"{v['name']} tcp:{v['mavlink'].rpartition(':')[2]}" for v in r.get("vehicles", []))
+        table.add_row(escape(r.get("run", "")), r.get("state", ""), escape(r.get("owner") or ""),
+                      time.strftime("%H:%M:%S", time.localtime(r.get("started", 0))), str(r.get("pid")),
+                      escape(vehicles))
+    console.print(table)
+    return 0
 
 
 def cmd_logs(args, settings: Settings) -> int:
@@ -419,6 +445,7 @@ def build_parser() -> argparse.ArgumentParser:
     tui = sub.add_parser("tui", help="open the terminal UI (default)")
     tui.add_argument("scenario", nargs="?")
     tui.add_argument("--example", choices=EXAMPLES)
+    tui.add_argument("--allow-parallel", action="store_true", help="start even when another Hangar run is going on")
 
     up = sub.add_parser("up", help="run a scenario without the UI (Ctrl+C stops it)")
     up.add_argument("scenario", nargs="?")
@@ -426,6 +453,11 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("-v", "--verbose", action="store_true", help="also print raw SITL output")
     up.add_argument("--status-every", type=float, default=10.0, metavar="SEC")
     up.add_argument("--map", action="store_true", help="also open the shared MAVProxy map and console")
+    up.add_argument("--owner", metavar="TAG", help="who started it, shown by `hangar status` (default: cli)")
+    up.add_argument("--allow-parallel", action="store_true", help="start even when another Hangar run is going on")
+
+    status = sub.add_parser("status", help="list the Hangar runs going on now (from any program)")
+    status.add_argument("--json", action="store_true", help="as JSON, for scripts")
 
     ports = sub.add_parser("ports", help="show the port plan and preflight result")
     ports.add_argument("scenario", nargs="?")
@@ -482,7 +514,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 COMMANDS = {
-    "tui": cmd_tui, "up": cmd_up, "ports": cmd_ports, "init": cmd_init, "models": cmd_models,
+    "tui": cmd_tui, "up": cmd_up, "status": cmd_status, "ports": cmd_ports, "init": cmd_init, "models": cmd_models,
     "worlds": cmd_worlds, "world": cmd_world, "doctor": cmd_doctor, "logs": cmd_logs, "config": cmd_config,
     "sources": cmd_sources,
 }

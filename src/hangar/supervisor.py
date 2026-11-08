@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from . import camera, paths, perf
+from . import __version__, camera, paths, perf, registry
 from .catalog import Catalog, VehicleModel
 from .mavlink import VehicleLink
 from .ports import SERIAL0_BASE, STRIDE, Endpoint, PortPlan, VehiclePorts, port_in_use
@@ -107,8 +107,12 @@ class Supervisor:
         catalog: Catalog,
         on_log: Callable[[LogLine], None] | None = None,
         on_state: Callable[[SimState], None] | None = None,
+        owner: str | None = None,
+        allow_parallel: bool = False,
     ):
         self.scenario = scenario
+        self.owner = owner  # shown to other programs in `hangar status`
+        self.allow_parallel = allow_parallel  # start even when another Hangar run is going on
         self._auto_instance = 0  # see pick_instance()
         self.settings = settings
         self.catalog = catalog
@@ -127,6 +131,7 @@ class Supervisor:
         self._attempt_started = 0.0
         self.mavproxy: ManagedProcess | None = None
         self._map_output: Endpoint | None = None
+        self._registration: registry.Registration | None = None
         atexit.register(self._kill_all)
 
     # --- logging / state -------------------------------------------------
@@ -192,6 +197,14 @@ class Supervisor:
     def preflight(self, check_ports: bool = True) -> Preflight:
         errors: list[str] = []
         warnings: list[str] = []
+        if check_ports:
+            others = [r for r in registry.active_runs() if not self._is_own(r)]
+            for r in others:
+                text = f"another Hangar run is going on: {registry.describe(r)}"
+                if self.allow_parallel:
+                    warnings.append(text + "; both share this computer, so both run slower")
+                else:
+                    errors.append(text + "; stop it first (or start with --allow-parallel)")
         if check_ports and self.scenario.vehicles:
             n = self.pick_instance()
             if self._auto_instance:
@@ -299,6 +312,7 @@ class Supervisor:
         except Exception as e:
             self.log("hangar", f"start failed: {e}", "error")
             await self._teardown()
+            self._unregister("failed")
             self._set_state(SimState.ERROR)
             self._close_logfile()
             raise SupervisorError(str(e)) from e
@@ -343,6 +357,7 @@ class Supervisor:
         (self.run_dir / "scenario.yaml").write_text(self.effective_scenario().dump(), encoding="utf-8")
         self._open_logfile()
         self.log("hangar", f"run directory: {self.run_dir}", "event")
+        self._register(pf.plan)
 
         poses = self.scenario.placed_poses()
         self.vehicles = [
@@ -360,6 +375,8 @@ class Supervisor:
         await asyncio.gather(*(self._start_vehicle(v) for v in self.vehicles))
         self.started_at = time.time()
         self._set_state(SimState.RUNNING)
+        if self._registration:
+            self._registration.update(state="running", running_since=self.started_at)
         self.log("hangar", f"{len(self.vehicles)} vehicle(s) running", "event")
         watcher = asyncio.create_task(self._watch_speed())
         self._background.add(watcher)
@@ -767,6 +784,7 @@ class Supervisor:
         self._set_state(SimState.STOPPING)
         self.log("hangar", "stopping", "event")
         await self._teardown()
+        self._unregister("stopped")
         self.started_at = None
         self._set_state(SimState.IDLE)
         self.log("hangar", "stopped", "event")
@@ -794,6 +812,7 @@ class Supervisor:
             self.gazebo = None
 
     def _kill_all(self) -> None:
+        self._unregister("killed")
         if self.mavproxy:
             self.mavproxy.kill_now()
         for v in self.vehicles:
@@ -802,6 +821,32 @@ class Supervisor:
                     p.kill_now()
         if self.gazebo:
             self.gazebo.kill_now()
+
+    # --- the shared list of runs (see registry.py) ------------------------
+
+    def _register(self, plan: PortPlan) -> None:
+        assert self.run_dir
+        sc = self.effective_scenario()
+        self._registration = registry.Registration(self.run_dir)
+        self._registration.write({
+            "state": "starting", "started": time.time(), "owner": self.owner, "scenario": sc.name,
+            "hangar": __version__, "world": sc.world if self.uses_gazebo else None,
+            "first_instance": plan.vehicles[0].instance if plan.vehicles else sc.first_instance,
+            "vehicles": [{
+                "name": v.name, "model": spec.model, "type": m.type if (m := self.catalog.get(spec.model)) else None,
+                "sysid": v.sysid, "instance": v.instance, "mavlink": f"tcp:127.0.0.1:{v.serial0}",
+                "serial1": v.serial1, "serial2": v.serial2, "fdm": v.fdm,
+                "outputs": [str(o) for o in v.outputs],
+            } for v, spec in zip(plan.vehicles, sc.vehicles)],
+        })
+
+    def _unregister(self, state: str) -> None:
+        if self._registration:
+            self._registration.close(state)
+            self._registration = None
+
+    def _is_own(self, entry: dict) -> bool:
+        return bool(self._registration) and entry.get("run_dir") == str(self._registration.run_dir)
 
     # --- queries ---------------------------------------------------------
 
